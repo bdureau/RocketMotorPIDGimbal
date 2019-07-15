@@ -11,12 +11,12 @@ void defaultConfig()
   config.gx_offset =0;
   config.gy_offset =0;
   config.gz_offset =0;
-  config.KpX=0.0;
-  config.KiX=0.0;
-  config.KdX=0.0;
-  config.KpY=0.0;
-  config.KiY=0.0;
-  config.KdY=0.0;
+  config.KpX=0;
+  config.KiX=0;
+  config.KdX=0;
+  config.KpY=0;
+  config.KiY=0;
+  config.KdY=0;
   config.ServoXMin=0;
   config.ServoXMax=0;
   config.ServoYMin=0;
@@ -65,7 +65,7 @@ boolean readAltiConfig() {
 * write the config received by the console
 *
 */
-void writeAltiConfig( char *p ) {
+bool  writeAltiConfig( char *p ) {
 //Serial1.println(p);
   char *str;
   int i=0;
@@ -93,22 +93,22 @@ void writeAltiConfig( char *p ) {
       config.gz_offset =atoi(str);
       break; 
     case 7:        
-      config.KpX = atof(str);
+      config.KpX = atoi(str);
       break; 
     case 8:
-      config.KiX = atof(str);
+      config.KiX = atoi(str);
       break; 
     case 9:
-      config.KdX = atof(str);
+      config.KdX = atoi(str);
       break; 
     case 10:
-      config.KpY = atof(str);
+      config.KpY = atoi(str);
       break; 
     case 11:
-      config.KiY = atof(str);
+      config.KiY = atoi(str);
       break; 
     case 12:
-      config.KdY = atof(str);
+      config.KdY = atoi(str);
       break; 
     case 13:
       config.ServoXMin =atoi(str);
@@ -144,10 +144,16 @@ void writeAltiConfig( char *p ) {
     i++;
 
   }
-//config.cksum != 0xBA;
+
+  //we have a partial config
+  if (i<22)
+    return false;
+    
+  //calculate checksum
   config.cksum = CheckSumConf(config);
 
   writeConfigStruc();
+  return true;
 }      
 
 void writeConfigStruc()
@@ -156,8 +162,4 @@ void writeConfigStruc()
     for( i=0; i<sizeof(config); i++ ) {
       EEPROM.write(CONFIG_START+i, *((char*)&config + i));
     }
-    /*SerialCom.print(F("End address: "));
-    SerialCom.print(CONFIG_START+i);
-    SerialCom.print(F("EEPROM length: "));*/
-    //Serial.print(EEPROM.length());
 }

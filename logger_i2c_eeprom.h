@@ -28,6 +28,7 @@ struct FlightDataStruct {
 struct FlightConfigStruct {
   long flight_start;    
   long flight_stop; 
+  //long flight_type;
 };
 
 #define LOGGER_I2C_EEPROM_VERSION "1.0.0"
@@ -69,6 +70,7 @@ public:
     void getFlightRocketPos(float *pos);
     long getFlightStart(int flightNbr);
     long getFlightStop(int flightNbr);
+    //long getFlightType(int flightNbr);
     void PrintFlight(int flightNbr);
     void printFlightData(int flightNbr);
     boolean CanRecord();

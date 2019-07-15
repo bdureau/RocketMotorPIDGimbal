@@ -43,6 +43,7 @@ void logger_I2C_eeprom::clearFlightList()
   {
     _FlightConfig[i].flight_start = 0;
     _FlightConfig[i].flight_stop = 0;
+    //_FlightConfig[i].flight_type =0;
   }
 
 }
@@ -200,6 +201,10 @@ long logger_I2C_eeprom::getFlightStop(int flightNbr)
 {
   return  _FlightConfig[flightNbr].flight_stop;
 }
+/*long logger_I2C_eeprom::getFlightType(int flightNbr)
+{
+  return  _FlightConfig[flightNbr].flight_type;
+}*/
 long logger_I2C_eeprom::getFlightTimeData()
 {
   return _FlightData.diffTime;
@@ -213,9 +218,11 @@ void logger_I2C_eeprom::PrintFlight(int flightNbr)
 {
   long startaddress;
   long endaddress;
+  long flight_type;
   startaddress = getFlightStart(flightNbr);
   endaddress = getFlightStop(flightNbr);
-
+  //flight_type = getFlightType(flightNbr);
+  
   if (startaddress > 200)
   {
     int i = startaddress;
@@ -241,10 +248,10 @@ void logger_I2C_eeprom::printFlightData(int flightNbr)
 
   int startaddress;
   int endaddress;
-
+  long flight_type;
   startaddress = getFlightStart(flightNbr);
   endaddress = getFlightStop(flightNbr);
-
+  //flight_type = getFlightType(flightNbr);
   if (startaddress > 200)
   {
     int i = startaddress;
