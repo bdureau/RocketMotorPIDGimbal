@@ -32,6 +32,7 @@
 #include "config.h"
 #include "global.h"
 #include "utils.h"
+#include "kalman.h"
 #include "logger_i2c_eeprom.h"
 logger_I2C_eeprom logger(0x50) ;
 long endAddress = 65536;
@@ -44,21 +45,25 @@ boolean liftOff = false;
 boolean landed = true;
 //ground level altitude
 long initialAltitude;
-long liftoffAltitude=20;
+long liftoffAltitude = 20;
 long lastAltitude;
 //current altitude
 long currAltitude;
-bool canRecord; 
-unsigned long initialTime=0;
+bool canRecord;
+unsigned long initialTime = 0;
 unsigned long prevTime = 0;
 unsigned long diffTime;
-unsigned long currentTime=0;
+unsigned long currentTime = 0;
+double ReadAltitude()
+{
+  return KalmanCalc(bmp.readAltitude());
+}
 /*
- * Initial setup
- *  do the board calibration
- *  if you use the calibration function do not move the board until the calibration is complete
- * 
- */
+   Initial setup
+    do the board calibration
+    if you use the calibration function do not move the board until the calibration is complete
+
+*/
 void setup()
 {
   ax_offset = 1118;
@@ -80,14 +85,21 @@ void setup()
   Serial1.begin(38400);
   while (!Serial1);      // wait for Leonardo enumeration, others continue immediately
   bmp.begin( config.altimeterResolution);
-
+  // init Kalman filter
+  KalmanInit();
+  // let's do some dummy altitude reading
+  // to initialise the Kalman filter
+  for (int i = 0; i < 50; i++) {
+    ReadAltitude();
+  }
+  
   long sum = 0;
   for (int i = 0; i < 10; i++) {
-    sum += bmp.readAltitude();
+    sum += ReadAltitude(); //bmp.readAltitude();
     delay(50);
   }
   initialAltitude = (sum / 10.0);
-  
+
   // configure LED for output
   pinMode(LED_PIN, OUTPUT);
 
@@ -134,7 +146,8 @@ void setup()
   // Get flight
   int v_ret;
   v_ret = logger.readFlightList();
-
+  //int epromsize = logger.determineSize();
+  //Serial1.println(epromsize);
   long lastFlightNbr = logger.getLastFlightNbr();
 
   if (lastFlightNbr < 0)
@@ -148,13 +161,14 @@ void setup()
     currentFileNbr = lastFlightNbr + 1;
   }
   canRecord = logger.CanRecord();
+  //canRecord = true;
 }
 
 /*
- * 
- * Initialize MUP6050
- * 
- */
+
+   Initialize MUP6050
+
+*/
 void initialize() {
   // verify connection
   Serial1.println(F("Testing device connections..."));
@@ -163,16 +177,16 @@ void initialize() {
   // initialize device
   // do not use the constructor so that we can change the gyro and ACCEL RANGE
   // values accelerometer are:
-  // MPU6050_ACCEL_FS_2    
+  // MPU6050_ACCEL_FS_2
   // MPU6050_ACCEL_FS_4
   // MPU6050_ACCEL_FS_8
-  // MPU6050_ACCEL_FS_16 
+  // MPU6050_ACCEL_FS_16
   // Values for the Gyro are:
   // MPU6050_GYRO_FS_250
   // MPU6050_GYRO_FS_500
   // MPU6050_GYRO_FS_1000
-  // MPU6050_GYRO_FS_2000  
-  
+  // MPU6050_GYRO_FS_2000
+
   Serial1.println(F("Initializing MPU 6050 device..."));
   mpu.setClockSource(MPU6050_CLOCK_PLL_XGYRO);
   mpu.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
@@ -216,10 +230,10 @@ void initialize() {
 }
 
 /*
- * 
- * MAIN PROGRAM LOOP
- * 
- */
+
+   MAIN PROGRAM LOOP
+
+*/
 void loop(void)
 {
   MainMenu();
@@ -227,40 +241,63 @@ void loop(void)
 
 void Mainloop(void)
 {
+  long startTime = millis();
+  /*Serial1.print("Start main loop: ");
+  Serial1.println(startTime);*/
   //read current altitude
-  currAltitude = (bmp.readAltitude() - initialAltitude);
+  currAltitude = (ReadAltitude() - initialAltitude);
   if (( currAltitude > liftoffAltitude) == true && liftOff == false )
   {
-      liftOff = true;
-      // save the time
-      initialTime = millis();
-      prevTime=initialTime;
-      if (canRecord)
+    liftOff = true;
+    // save the time
+    initialTime = millis();
+    prevTime = 0;
+    if (canRecord)
+    {
+      long lastFlightNbr = logger.getLastFlightNbr();
+
+      if (lastFlightNbr < 0)
       {
-        //Save start address
-        logger.setFlightStartAddress (currentFileNbr, currentMemaddress);
+        currentFileNbr = 0;
+        currentMemaddress = 201;
       }
-  }    
+      else
+      {
+        currentMemaddress = logger.getFlightStop(lastFlightNbr) + 1;
+        currentFileNbr = lastFlightNbr + 1;
+      }
+      //Save start address
+      logger.setFlightStartAddress (currentFileNbr, currentMemaddress);
+    }
+    //Serial1.println("We have a liftoff");
+  }
   if (canRecord && liftOff)
   {
-      currentTime = millis() - initialTime;
-      diffTime = currentTime - prevTime;
-      prevTime = currentTime;
-      logger.setFlightTimeData( diffTime);
-      logger.setFlightAltitudeData(currAltitude);
-      //logger.setFlightTemperatureData((long) bmp.readTemperature());
-      currentMemaddress = logger.writeFlight(currentMemaddress);
-      currentMemaddress++;
-   }
+    currentTime = millis() - initialTime;
+    diffTime = currentTime - prevTime;
+    prevTime = currentTime;
+    logger.setFlightTimeData( diffTime);
+    logger.setFlightAltitudeData(currAltitude);
+    //logger.setFlightTemperatureData((long) bmp.readTemperature());
+    
+    currentMemaddress = logger.writeFastFlight(currentMemaddress);
+    //currentMemaddress = logger.writeFlight(currentMemaddress);
+    currentMemaddress++;
+    //long diffTime2 = millis()-startTime;
+//Serial1.print("Diff time: ");
+//Serial1.println(diffTime2);
+    Serial1.println(currentMemaddress);
+  }
 
-   if ((canRecord && currAltitude < 10) && liftOff )
-   {
-      liftOff =false;
-      //end loging
-      //store start and end address
-      logger.setFlightEndAddress (currentFileNbr, currentMemaddress - 1);
-      logger.writeFlightList();
-   }
+  if ((canRecord && currAltitude < 10) && liftOff )
+  {
+    liftOff = false;
+    //end loging
+    //store start and end address
+    logger.setFlightEndAddress (currentFileNbr, currentMemaddress - 1);
+    logger.writeFlightList();
+   // Serial1.println("We have landed");
+  }
   // get current FIFO count
   fifoCount = mpu.getFIFOCount();
 
@@ -269,7 +306,7 @@ void Mainloop(void)
   {
     // reset so we can continue cleanly
     mpu.resetFIFO();
-    return;
+    //return;
   }
 
   // check for correct available data length
@@ -346,11 +383,16 @@ void Mainloop(void)
     Serial1.print(OutputX);
     Serial1.print("    ");
     Serial1.println(OutputY);*/
-  delay(10);
+  if(!liftOff)// && !canRecord)
+    delay(10);
 
   // flush buffer to prevent overflow
   mpu.resetFIFO();
-
+/*Serial1.print("End main loop: ");
+Serial1.println(millis());
+long diffTime = startTime - millis();
+Serial1.print("Diff time: ");
+Serial1.println(diffTime);*/
 }
 
 
@@ -425,9 +467,9 @@ void interpretCommandBuffer(char *commandbuffer) {
   //write altimeter config
   else if (commandbuffer[0] == 's')
   {
-    if(writeAltiConfig(commandbuffer))
+    if (writeAltiConfig(commandbuffer))
       Serial1.print(F("$OK;\n"));
-    else 
+    else
       Serial1.print(F("$KO;\n"));
   }
   //reset alti config
@@ -519,10 +561,10 @@ void interpretCommandBuffer(char *commandbuffer) {
 }
 
 /*
- * 
- * Send telemetry to the Android device
- * 
- */
+
+   Send telemetry to the Android device
+
+*/
 void SendTelemetry(float * arr, int freq) {
 
   float currAltitude;
@@ -531,7 +573,7 @@ void SendTelemetry(float * arr, int freq) {
   float batVoltage;
   if (last_telem_time - millis() > freq)
     if (telemetryEnable) {
-      currAltitude = bmp.readAltitude();
+      currAltitude = ReadAltitude();
       pressure = bmp.readPressure();
       temperature = bmp.readTemperature();
       last_telem_time = millis();
@@ -589,10 +631,10 @@ void SendTelemetry(float * arr, int freq) {
 }
 
 /*
- * 
- * Send the Gimbal configuration to the Android device
- * 
- */
+
+   Send the Gimbal configuration to the Android device
+
+*/
 void SendAltiConfig() {
   bool ret = readAltiConfig();
   //if (!ret)
@@ -657,13 +699,13 @@ void SendAltiConfig() {
 
 
 /*
- * 
- * 
- * calibration routines those will be executed each time the board is powered up.
- * we might want to calibrate it for good on a flat table and save it to the microcontroler eeprom
- * 
- * 
- */
+
+
+   calibration routines those will be executed each time the board is powered up.
+   we might want to calibrate it for good on a flat table and save it to the microcontroler eeprom
+
+
+*/
 void calibrate() {
   // start message
   Serial1.println("\nMPU6050 Calibration Sketch");
@@ -733,9 +775,9 @@ void calibrate() {
 }
 
 /*
- * Used by the calibration fonction
- * 
- */
+   Used by the calibration fonction
+
+*/
 void meansensors() {
   long i = 0, buff_ax = 0, buff_ay = 0, buff_az = 0, buff_gx = 0, buff_gy = 0, buff_gz = 0;
 
