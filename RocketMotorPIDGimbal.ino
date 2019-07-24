@@ -278,15 +278,21 @@ void Mainloop(void)
     prevTime = currentTime;
     logger.setFlightTimeData( diffTime);
     logger.setFlightAltitudeData(currAltitude);
-    //logger.setFlightTemperatureData((long) bmp.readTemperature());
-    
+    logger.setFlightTemperatureData((long) bmp.readTemperature());
+    logger.setFlightPressureData((long) bmp.readPressure());
+    char w[2];
+    floatToByte(q.w,w );
+    char x[2];
+    floatToByte(q.x,x );
+    char y[2];
+    floatToByte(q.y,y );
+    char z[2];
+    floatToByte(q.z,z );
+    logger.setFlightRocketPos(w, x, y, z);
+    logger.setFlightCorrection( (long) OutputX, (long)OutputY);
+    logger.setAcceleration(mpu.getAccelerationX(),mpu.getAccelerationY(), mpu.getAccelerationZ());
     currentMemaddress = logger.writeFastFlight(currentMemaddress);
-    //currentMemaddress = logger.writeFlight(currentMemaddress);
     currentMemaddress++;
-    //long diffTime2 = millis()-startTime;
-//Serial1.print("Diff time: ");
-//Serial1.println(diffTime2);
-    Serial1.println(currentMemaddress);
   }
 
   if ((canRecord && currAltitude < 10) && liftOff )
