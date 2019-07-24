@@ -3,7 +3,7 @@
 
 #include <Wire.h>
 
-
+#include "utils.h"
 
 #if defined(ARDUINO) && ARDUINO >= 100
 #include "Arduino.h"
@@ -25,10 +25,14 @@ struct FlightDataStruct {
   long altitude;
   long temperature;
   long pressure;
-  char w[2];
+ /* char w[2];
   char x[2];
   char y[2];
-  char z[2];
+  char z[2];*/
+  long w;
+  long x;
+  long y;
+  long z;
   long OutputX;
   long OutputY;
   long accelX;
@@ -72,7 +76,8 @@ public:
     void setFlightCorrection( long OutputX, long OutputY);
     void setAcceleration(long X,long Y,long Z);
     void getFlightCorrection(long *cor);
-    void setFlightRocketPos(char *w, char *x, char *y, char *z);
+    //void setFlightRocketPos(char *w, char *x, char *y, char *z);
+    void setFlightRocketPos(long w, long x, long y, long z );
     void getFlightRocketPos(long *pos);
     long getFlightStart(int flightNbr);
     long getFlightStop(int flightNbr);

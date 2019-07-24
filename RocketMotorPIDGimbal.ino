@@ -280,15 +280,20 @@ void Mainloop(void)
     logger.setFlightAltitudeData(currAltitude);
     logger.setFlightTemperatureData((long) bmp.readTemperature());
     logger.setFlightPressureData((long) bmp.readPressure());
-    char w[2];
+    /*char w[2];
     floatToByte(q.w,w );
     char x[2];
     floatToByte(q.x,x );
     char y[2];
     floatToByte(q.y,y );
     char z[2];
-    floatToByte(q.z,z );
-    logger.setFlightRocketPos(w, x, y, z);
+    floatToByte(q.z,z );*/
+    float w= q.w;
+    float x= q.x;
+    float y= q.y;
+    float z= q.z;
+    //Serial1.println((long)(w*1000));
+    logger.setFlightRocketPos((long) (w*1000), (long) (q.x*1000), (long) (q.y*1000), (long) (q.z*1000));
     logger.setFlightCorrection( (long) OutputX, (long)OutputY);
     logger.setAcceleration(mpu.getAccelerationX(),mpu.getAccelerationY(), mpu.getAccelerationZ());
     currentMemaddress = logger.writeFastFlight(currentMemaddress);
@@ -326,7 +331,7 @@ void Mainloop(void)
   fifoCount -= packetSize;
 
   // flush buffer to prevent overflow
-  mpu.resetFIFO();
+ // mpu.resetFIFO();
 
   // display Euler angles in degrees
   mpu.dmpGetQuaternion(&q, fifoBuffer);

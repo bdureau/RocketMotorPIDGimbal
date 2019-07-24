@@ -107,16 +107,21 @@ void logger_I2C_eeprom::setFlightTemperatureData( long temperature){
 void logger_I2C_eeprom::setFlightPressureData( long pressure){
   _FlightData.pressure = pressure;
 }
-void logger_I2C_eeprom::setFlightRocketPos(char *w, char *x, char *y, char *z )
+//void logger_I2C_eeprom::setFlightRocketPos(char *w, char *x, char *y, char *z )
+void logger_I2C_eeprom::setFlightRocketPos(long w, long x, long y, long z )
 {
-    _FlightData.w[0] = w[0];
+    /*_FlightData.w[0] = w[0];
     _FlightData.w[1] = w[1];
     _FlightData.x[0] = x[0];
     _FlightData.x[1] = x[1];
     _FlightData.y[0] = y[0];
     _FlightData.y[1] = y[1];
     _FlightData.z[0] = z[0];
-    _FlightData.z[1] = z[1];
+    _FlightData.z[1] = z[1];*/
+    _FlightData.w =w;
+    _FlightData.x = x;
+    _FlightData.y = y;
+    _FlightData.z = z;
 }
 void logger_I2C_eeprom::getFlightRocketPos(long *pos) {
   /* pos[0] = _FlightData.w;
@@ -221,13 +226,31 @@ void logger_I2C_eeprom::printFlightData(int flightNbr)
       Serial1.print(",");
       Serial1.print(_FlightData.pressure);
       Serial1.print(",");
-      Serial1.print(_FlightData.w);
+      //char w[2];
+      //floatToByte((float)_FlightData.w/1000,w );
+      //Serial1.print("XXX");
+      //Serial1.print(_FlightData.w);
+      //Serial1.print("XXX");
+      //float w = (float)(_FlightData.w)/1000;
+      //Serial1.print("YYY");
+      //Serial1.print(w);
+      //Serial1.print("YYY");
+      serialFloatPrint((float)(_FlightData.w)/1000);
       Serial1.print(",");
-      Serial1.print(_FlightData.x);
+      //char x[2];
+      //floatToByte((float)_FlightData.x/1000,x );
+      //Serial1.print(x);
+      serialFloatPrint((float)(_FlightData.x)/1000);
       Serial1.print(",");
-      Serial1.print(_FlightData.y);
+      //char y[2];
+      //floatToByte((float)_FlightData.y/1000,y );
+      //Serial1.print(y);
+      serialFloatPrint((float)(_FlightData.y)/1000);
       Serial1.print(",");
-      Serial1.print(_FlightData.z);
+      //char z[2];
+      //floatToByte((float)_FlightData.z/1000,z );
+      //Serial1.print(z);
+      serialFloatPrint((float)(_FlightData.z)/1000);
       Serial1.print(",");
       Serial1.print(_FlightData.OutputX);
       Serial1.print(",");
