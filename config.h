@@ -32,6 +32,7 @@ struct ConfigStruct {
   int unit;
   int endRecordAltitude;
   int beepingFrequency;
+  int liftOffDetect;
   int cksum;  
 };
 extern ConfigStruct config;

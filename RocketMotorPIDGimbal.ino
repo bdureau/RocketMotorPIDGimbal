@@ -50,6 +50,8 @@ long lastAltitude;
 //current altitude
 long currAltitude;
 bool canRecord;
+bool recording = false;
+bool rec = false;
 unsigned long initialTime = 0;
 unsigned long prevTime = 0;
 unsigned long diffTime;
@@ -92,7 +94,7 @@ void setup()
   for (int i = 0; i < 50; i++) {
     ReadAltitude();
   }
-  
+
   long sum = 0;
   for (int i = 0; i < 10; i++) {
     sum += ReadAltitude(); //bmp.readAltitude();
@@ -243,12 +245,24 @@ void Mainloop(void)
 {
   long startTime = millis();
   /*Serial1.print("Start main loop: ");
-  Serial1.println(startTime);*/
+    Serial1.println(startTime);*/
   //read current altitude
   currAltitude = (ReadAltitude() - initialAltitude);
-  if (( currAltitude > liftoffAltitude) == true && liftOff == false )
+  bool lift = false;
+  if (config.liftOffDetect == 0) { //use baro detection
+    if ( currAltitude > liftoffAltitude)
+      lift = true;
+  }
+  else { // use accelero
+    if (mpu.getAccelerationY() > 30000)
+      lift = true;
+  }
+
+  if ((lift && !liftOff) || (recording && !liftOff))
   {
     liftOff = true;
+    if (recording)
+      rec = true;
     // save the time
     initialTime = millis();
     prevTime = 0;
@@ -280,35 +294,30 @@ void Mainloop(void)
     logger.setFlightAltitudeData(currAltitude);
     logger.setFlightTemperatureData((long) bmp.readTemperature());
     logger.setFlightPressureData((long) bmp.readPressure());
-    /*char w[2];
-    floatToByte(q.w,w );
-    char x[2];
-    floatToByte(q.x,x );
-    char y[2];
-    floatToByte(q.y,y );
-    char z[2];
-    floatToByte(q.z,z );*/
-    float w= q.w;
-    float x= q.x;
-    float y= q.y;
-    float z= q.z;
-    //Serial1.println((long)(w*1000));
-    logger.setFlightRocketPos((long) (w*1000), (long) (q.x*1000), (long) (q.y*1000), (long) (q.z*1000));
+
+    float w = q.w;
+    float x = q.x;
+    float y = q.y;
+    float z = q.z;
+
+    logger.setFlightRocketPos((long) (w * 1000), (long) (q.x * 1000), (long) (q.y * 1000), (long) (q.z * 1000));
     logger.setFlightCorrection( (long) OutputX, (long)OutputY);
-    logger.setAcceleration(mpu.getAccelerationX(),mpu.getAccelerationY(), mpu.getAccelerationZ());
+    logger.setAcceleration(mpu.getAccelerationX(), mpu.getAccelerationY(), mpu.getAccelerationZ());
     currentMemaddress = logger.writeFastFlight(currentMemaddress);
     currentMemaddress++;
   }
 
-  if ((canRecord && currAltitude < 10) && liftOff )
+  if (((canRecord && currAltitude < 10) && liftOff && !recording && !rec) || (!recording && rec))
   {
     liftOff = false;
+    rec = false;
     //end loging
     //store start and end address
     logger.setFlightEndAddress (currentFileNbr, currentMemaddress - 1);
     logger.writeFlightList();
-   // Serial1.println("We have landed");
+    // Serial1.println("We have landed");
   }
+
   // get current FIFO count
   fifoCount = mpu.getFIFOCount();
 
@@ -331,7 +340,7 @@ void Mainloop(void)
   fifoCount -= packetSize;
 
   // flush buffer to prevent overflow
- // mpu.resetFIFO();
+  // mpu.resetFIFO();
 
   // display Euler angles in degrees
   mpu.dmpGetQuaternion(&q, fifoBuffer);
@@ -394,16 +403,16 @@ void Mainloop(void)
     Serial1.print(OutputX);
     Serial1.print("    ");
     Serial1.println(OutputY);*/
-  if(!liftOff)// && !canRecord)
+  if (!liftOff) // && !canRecord)
     delay(10);
 
   // flush buffer to prevent overflow
   mpu.resetFIFO();
-/*Serial1.print("End main loop: ");
-Serial1.println(millis());
-long diffTime = startTime - millis();
-Serial1.print("Diff time: ");
-Serial1.println(diffTime);*/
+  /*Serial1.print("End main loop: ");
+    Serial1.println(millis());
+    long diffTime = startTime - millis();
+    Serial1.print("Diff time: ");
+    Serial1.println(diffTime);*/
 }
 
 
@@ -501,6 +510,19 @@ void interpretCommandBuffer(char *commandbuffer) {
     Serial1.println(F("Erase\n"));
     logger.clearFlightList();
     logger.writeFlightList();
+  }
+  //start or stop recording
+  else if (commandbuffer[0] == 'w')
+  {
+    if (commandbuffer[1] == '1') {
+      Serial1.print(F("Start Recording\n"));
+      recording = true;
+    }
+    else {
+      Serial1.print(F("Stop Recording\n"));
+      recording = false;
+    }
+    Serial1.print(F("$OK;\n"));
   }
   //this will read one flight
   else if (commandbuffer[0] == 'r')

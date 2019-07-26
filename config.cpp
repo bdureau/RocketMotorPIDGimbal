@@ -27,6 +27,7 @@ void defaultConfig()
   config.unit=0;
   config.endRecordAltitude=3;
   config.beepingFrequency=440;
+  config.liftOffDetect=0;
    
   config.cksum=CheckSumConf(config);
   //config.cksum=0xBA; 
@@ -139,7 +140,10 @@ bool  writeAltiConfig( char *p ) {
       break; 
     case 22:  
       config.beepingFrequency=atoi(str);
-      break;    
+      break;  
+    case 23:
+      config.liftOffDetect=atoi(str);  
+      break;
     }
     i++;
 
