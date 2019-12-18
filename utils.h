@@ -5,5 +5,6 @@
 
 void serialPrintFloatArr(float * arr, int length);
 void serialFloatPrint(float f); 
+void floatToByte(float f, char *ret);
 
 #endif

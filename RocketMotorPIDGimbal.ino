@@ -528,9 +528,9 @@ void interpretCommandBuffer(char *commandbuffer) {
   else if (commandbuffer[0] == 'r')
   {
     char temp[3];
-    Serial1.println(F("Read flight: "));
+    /*Serial1.println(F("Read flight: "));
     Serial1.println( commandbuffer[1]);
-    Serial1.println( "\n");
+    Serial1.println( "\n");*/
     temp[0] = commandbuffer[1];
     if (commandbuffer[2] != '\0')
     {
@@ -542,7 +542,10 @@ void interpretCommandBuffer(char *commandbuffer) {
 
     if (atol(temp) > -1)
     {
-      logger.PrintFlight(atoi(temp));
+      //logger.PrintFlight(atoi(temp));
+      Serial1.print(F("$start;\n"));
+      logger.printFlightData(atoi(temp));
+      Serial1.print(F("$end;\n"));
     }
     else
       Serial1.println(F("not a valid flight"));
@@ -550,9 +553,14 @@ void interpretCommandBuffer(char *commandbuffer) {
   //Number of flight
   else if (commandbuffer[0] == 'n')
   {
-    Serial1.println(F("Number of flight \n"));
-    Serial1.print(F("n;"));
-    logger.printFlightList();
+    Serial1.print(F("$start;\n"));
+    Serial1.print(F("$nbrOfFlight,"));
+    //Serial1.print(F("n;"));
+    //logger.printFlightList();
+    logger.readFlightList();
+    Serial1.print(logger.getLastFlightNbr());
+    Serial1.print(";\n");
+    Serial1.print(F("$end;\n"));
   }
   //list all flights
   else if (commandbuffer[0] == 'l')
