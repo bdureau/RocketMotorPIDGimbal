@@ -38,7 +38,7 @@ logger_I2C_eeprom logger(0x50) ;
 long endAddress = 65536;
 // current file number that you are recording
 int currentFileNbr = 0;
-
+const int pinSpeaker = PA0;
 // EEPROM start adress for the flights. Anything before that is the flight index
 long currentMemaddress = 200;
 boolean liftOff = false;
@@ -81,12 +81,19 @@ void setup()
   ServoX.write(90);
   ServoY.write(90);
   delay(500);
+  //software pull up so that all bluetooth modules work!!!
+  //This is on the serial1 RX pin
+  //pinMode(PA10, INPUT_PULLUP);
+  //pinMode(PA10, INPUT_PULLDOWN);
 
   Wire.begin();
-
+  //default values
+  defaultConfig();
   Serial1.begin(38400);
   while (!Serial1);      // wait for Leonardo enumeration, others continue immediately
+  
   bmp.begin( config.altimeterResolution);
+
   // init Kalman filter
   KalmanInit();
   // let's do some dummy altitude reading
@@ -132,6 +139,7 @@ void setup()
     //config.cksum = 0xBA;
     writeConfigStruc();
   }
+
   // INPUT CALIBRATED OFFSETS HERE; SPECIFIC FOR EACH UNIT AND EACH MOUNTING CONFIGURATION!!!!
   // use the calibrate function for yours
   // you can also write down your offset and use them so that you do not have to re-run the calibration
@@ -142,6 +150,7 @@ void setup()
   gy_offset = config.gy_offset;
   gz_offset = config.gz_offset;
 
+Serial1.println("init device");
   //Initialize MPU
   initialize();
 
@@ -510,6 +519,8 @@ void interpretCommandBuffer(char *commandbuffer) {
     Serial1.println(F("Erase\n"));
     logger.clearFlightList();
     logger.writeFlightList();
+    currentFileNbr = 0;
+    currentMemaddress = 201;
   }
   //start or stop recording
   else if (commandbuffer[0] == 'w')
@@ -558,7 +569,7 @@ void interpretCommandBuffer(char *commandbuffer) {
     //Serial1.print(F("n;"));
     //logger.printFlightList();
     logger.readFlightList();
-    Serial1.print(logger.getLastFlightNbr());
+    Serial1.print(logger.getLastFlightNbr()+1);
     Serial1.print(";\n");
     Serial1.print(F("$end;\n"));
   }
@@ -614,7 +625,7 @@ void SendTelemetry(float * arr, int freq) {
   float batVoltage;
   if (last_telem_time - millis() > freq)
     if (telemetryEnable) {
-      currAltitude = ReadAltitude();
+      currAltitude = ReadAltitude()-initialAltitude;
       pressure = bmp.readPressure();
       temperature = bmp.readTemperature();
       last_telem_time = millis();
@@ -626,28 +637,28 @@ void SendTelemetry(float * arr, int freq) {
       Serial1.print(mpu.getRotationX());
       Serial1.print(F(","));
       //GyroY
-      Serial1.print(mpu.getRotationY());
+      Serial1.print(mpu.getRotationZ());
       Serial1.print(F(","));
       //GyroZ
-      Serial1.print(mpu.getRotationZ());
+      Serial1.print(mpu.getRotationY());
       Serial1.print(F(","));
       //AccelX
       Serial1.print(mpu.getAccelerationX());
       Serial1.print(F(","));
       //AccelY
-      Serial1.print(mpu.getAccelerationY());
+      Serial1.print(mpu.getAccelerationZ());
       Serial1.print(F(","));
       //AccelZ
-      Serial1.print(mpu.getAccelerationZ());
+      Serial1.print(mpu.getAccelerationY());
       Serial1.print(F(","));
       //OrientX
       Serial1.print(mpuYaw);
       Serial1.print(F(","));
       //OrientY
-      Serial1.print(mpuPitch);
+      Serial1.print(mpuRoll); //mpuPitch
       Serial1.print(F(","));
       //OrientZ
-      Serial1.print(mpuRoll);
+      Serial1.print(mpuPitch);//mpuRoll
       Serial1.print(F(","));
 
       //tab 2
