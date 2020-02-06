@@ -38,7 +38,7 @@ logger_I2C_eeprom logger(0x50) ;
 long endAddress = 65536;
 // current file number that you are recording
 int currentFileNbr = 0;
-const int pinSpeaker = PA0;
+
 // EEPROM start adress for the flights. Anything before that is the flight index
 long currentMemaddress = 200;
 boolean liftOff = false;
@@ -68,6 +68,9 @@ double ReadAltitude()
 */
 void setup()
 {
+  pinMode(pinSpeaker, OUTPUT);
+  digitalWrite(pinSpeaker, LOW);
+  beepAltiVersion(MAJOR_VERSION, MINOR_VERSION);
   ax_offset = 1118;
   ay_offset = 513;
   az_offset = 1289;
@@ -111,7 +114,7 @@ void setup()
 
   // configure LED for output
   pinMode(LED_PIN, OUTPUT);
-
+  
   boolean softConfigValid = false;
   // Read altimeter softcoded configuration
   softConfigValid = readAltiConfig();
@@ -622,7 +625,7 @@ void SendTelemetry(float * arr, int freq) {
   float currAltitude;
   float temperature;
   int pressure;
-  float batVoltage;
+  //float batVoltage;
   if (last_telem_time - millis() > freq)
     if (telemetryEnable) {
       currAltitude = ReadAltitude()-initialAltitude;
@@ -673,8 +676,10 @@ void SendTelemetry(float * arr, int freq) {
       Serial1.print(F(","));
       //Batt voltage
       pinMode(PB1, INPUT_ANALOG);
-      batVoltage = analogRead(PB1);
-      Serial1.print(batVoltage);
+      int batVoltage = analogRead(PB1);
+     // Serial1.print(batVoltage);
+      float bat = VOLT_DIVIDER * ((float)(batVoltage * 3300) / (float)4096000);
+      Serial1.print(bat);
       Serial1.print(F(","));
       //tab3
       serialPrintFloatArr(arr, 4);

@@ -1,5 +1,6 @@
 #include "config.h"
 ConfigStruct config;
+const int pinSpeaker = PA0;
 //================================================================
 // read and write in the microcontroler eeprom
 //================================================================
@@ -166,4 +167,34 @@ void writeConfigStruc()
     for( i=0; i<sizeof(config); i++ ) {
       EEPROM.write(CONFIG_START+i, *((char*)&config + i));
     }
+}
+void longBeep()
+{
+  //if (NoBeep == false)
+  //{
+    tone(pinSpeaker, 440, 1000);
+    delay(1500);
+    noTone(pinSpeaker);
+  //}
+}
+void shortBeep()
+{
+ // if (NoBeep == false)
+  //{
+    tone(pinSpeaker, 440, 25);
+    delay(300);
+    noTone(pinSpeaker);
+  //}
+}
+void beepAltiVersion (int majorNbr, int minorNbr)
+{
+  int i;
+  for (i = 0; i < majorNbr; i++)
+  {
+    longBeep();
+  }
+  for (i = 0; i < minorNbr; i++)
+  {
+    shortBeep();
+  }
 }
