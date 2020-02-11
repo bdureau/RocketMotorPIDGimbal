@@ -23,8 +23,9 @@
    SDA - A4  or pin SDA on the stm32
    INT - D2 (not used)
 
-  TODO:
-  Build an Android interface to monitor the telemetry and configure it
+  This can be confirgured using the Gimbale Android application
+  which is also hosted on Github
+
 
 */
 
@@ -94,7 +95,7 @@ void setup()
   defaultConfig();
   Serial1.begin(38400);
   while (!Serial1);      // wait for Leonardo enumeration, others continue immediately
-  
+
   bmp.begin( config.altimeterResolution);
 
   // init Kalman filter
@@ -114,7 +115,7 @@ void setup()
 
   // configure LED for output
   pinMode(LED_PIN, OUTPUT);
-  
+
   boolean softConfigValid = false;
   // Read altimeter softcoded configuration
   softConfigValid = readAltiConfig();
@@ -124,6 +125,7 @@ void setup()
   {
     //default values
     defaultConfig();
+#ifdef SERIAL_DEBUG
     Serial1.println(F("Config invalid"));
     Serial1.println("ax_offset =" + config.ax_offset);
     Serial1.println("ay_offset =" + config.ay_offset);
@@ -131,6 +133,7 @@ void setup()
     Serial1.println("gx_offset =" + config.gx_offset);
     Serial1.println("gy_offset =" + config.gy_offset);
     Serial1.println("gz_offset =" + config.gz_offset);
+#endif
     //delay(1000);
     //calibrate();
     config.ax_offset = ax_offset;
@@ -153,7 +156,7 @@ void setup()
   gy_offset = config.gy_offset;
   gz_offset = config.gz_offset;
 
-Serial1.println("init device");
+  Serial1.println("init device");
   //Initialize MPU
   initialize();
 
@@ -185,9 +188,10 @@ Serial1.println("init device");
 */
 void initialize() {
   // verify connection
+#ifdef SERIAL_DEBUG
   Serial1.println(F("Testing device connections..."));
   Serial1.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
-
+#endif
   // initialize device
   // do not use the constructor so that we can change the gyro and ACCEL RANGE
   // values accelerometer are:
@@ -200,15 +204,18 @@ void initialize() {
   // MPU6050_GYRO_FS_500
   // MPU6050_GYRO_FS_1000
   // MPU6050_GYRO_FS_2000
-
+#ifdef SERIAL_DEBUG
   Serial1.println(F("Initializing MPU 6050 device..."));
+#endif
   mpu.setClockSource(MPU6050_CLOCK_PLL_XGYRO);
   mpu.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
   mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
   mpu.setSleepEnabled(false); // thanks to Jack Elston for pointing this one out!
 
   // load and configure the DMP
+#ifdef SERIAL_DEBUG
   Serial1.println(F("Initializing DMP"));
+#endif
   devStatus = mpu.dmpInitialize();
   mpu.setXAccelOffset(ax_offset);
   mpu.setYAccelOffset(ay_offset);
@@ -228,7 +235,9 @@ void initialize() {
   if (devStatus == 0)
   {
     // turn on the DMP, now that it's ready
+#ifdef SERIAL_DEBUG
     Serial1.println(F("Enabling DMP"));
+#endif
     mpu.setDMPEnabled(true);
 
     // get expected DMP packet size for later comparison
@@ -238,8 +247,10 @@ void initialize() {
   {
     // ERROR!
     // 1 = initial memory load failed, 2 = DMP configuration updates failed (if it's going to break, usually the code will be 1)
+#ifdef SERIAL_DEBUG
     Serial1.print(F("DMP Initialization failed code = "));
     Serial1.println(devStatus);
+#endif
   }
 }
 
@@ -315,8 +326,15 @@ void Mainloop(void)
     logger.setFlightRocketPos((long) (w * 1000), (long) (q.x * 1000), (long) (q.y * 1000), (long) (q.z * 1000));
     logger.setFlightCorrection( (long) OutputX, (long)OutputY);
     logger.setAcceleration(mpu.getAccelerationX(), mpu.getAccelerationY(), mpu.getAccelerationZ());
-    currentMemaddress = logger.writeFastFlight(currentMemaddress);
-    currentMemaddress++;
+    if ( (currentMemaddress + logger.getSizeOfFlightData())  > endAddress) {
+      //flight is full let save it
+      //save end address
+      logger.setFlightEndAddress (currentFileNbr, currentMemaddress - 1);
+      canRecord = false;
+    } else {
+      currentMemaddress = logger.writeFastFlight(currentMemaddress);
+      currentMemaddress++;
+    }
   }
 
   if (((canRecord && currAltitude < 10) && liftOff && !recording && !rec) || (!recording && rec))
@@ -395,26 +413,7 @@ void Mainloop(void)
   q1[3] = q.z;
   //serialPrintFloatArr(q1, 4);
   SendTelemetry(q1, 500);
-  /*Serial1.println("");
-    Serial1.print("Yaw: ") ;
-    Serial1.print(mpuYaw );
-    Serial1.print("\tPitch: " );
-    Serial1.print(mpuPitch );
-    Serial1.print("\tRoll: ");
-    Serial1.print(mpuRoll);*/
-  /*Serial1.print("gX: ");
-    Serial1.print(gravity.x);
-    Serial1.print("\tgY: ");
-    Serial1.print(gravity.y);
-    Serial1.print("\tgZ: ");
-    Serial1.print(gravity.z);*/
-  /*Serial1.print(mpuPitch);
-    Serial1.print("    ");
-    Serial1.print(mpuRoll);
-    Serial1.print("    ");
-    Serial1.print(OutputX);
-    Serial1.print("    ");
-    Serial1.println(OutputY);*/
+
   if (!liftOff) // && !canRecord)
     delay(10);
 
@@ -461,10 +460,96 @@ void MainMenu()
 
   interpretCommandBuffer(commandbuffer);
 }
+/*
 
+   This interprets menu commands. This can be used in the commend line or
+   this is used by the Android console
+
+   Commands are as folow:
+   e  erase all saved flights
+   r  followed by a number which is the flight number.
+      This will retrieve all data for the specified flight
+   w  Start or stop recording
+   n  Return the number of recorded flights in the EEprom
+   l  list all flights
+   c  Different from other altimeters. Here it will calibrate the IMU
+   a  get all flight data
+   b  get altimeter config
+   s  write altimeter config
+   d  reset alti config
+   h  hello. Does not do much
+   y  followed by a number turn telemetry on/off. if number is 1 then
+      telemetry in on else turn it off
+*/
 void interpretCommandBuffer(char *commandbuffer) {
+  //this will erase all flight
+  if (commandbuffer[0] == 'e')
+  {
+#ifdef SERIAL_DEBUG
+    Serial1.println(F("Erase\n"));
+#endif
+    logger.clearFlightList();
+    logger.writeFlightList();
+    currentFileNbr = 0;
+    currentMemaddress = 201;
+  }
+  //this will read one flight
+  else if (commandbuffer[0] == 'r')
+  {
+    char temp[3];
+    temp[0] = commandbuffer[1];
+    if (commandbuffer[2] != '\0')
+    {
+      temp[1] = commandbuffer[2];
+      temp[2] = '\0';
+    }
+    else
+      temp[1] = '\0';
+
+    if (atol(temp) > -1)
+    {
+      Serial1.print(F("$start;\n"));
+      logger.printFlightData(atoi(temp));
+      Serial1.print(F("$end;\n"));
+    }
+    else
+      Serial1.println(F("not a valid flight"));
+  }
+  //start or stop recording
+  else if (commandbuffer[0] == 'w')
+  {
+    if (commandbuffer[1] == '1') {
+#ifdef SERIAL_DEBUG
+      Serial1.print(F("Start Recording\n"));
+#endif
+      recording = true;
+    }
+    else {
+#ifdef SERIAL_DEBUG
+      Serial1.print(F("Stop Recording\n"));
+#endif
+      recording = false;
+    }
+    Serial1.print(F("$OK;\n"));
+  }
+  //Number of flight
+  else if (commandbuffer[0] == 'n')
+  {
+    Serial1.print(F("$start;\n"));
+    Serial1.print(F("$nbrOfFlight,"));
+    logger.readFlightList();
+    Serial1.print(logger.getLastFlightNbr() + 1);
+    Serial1.print(";\n");
+    Serial1.print(F("$end;\n"));
+  }
+  //list all flights
+  else if (commandbuffer[0] == 'l')
+  {
+    Serial1.println(F("Flight List: \n"));
+    logger.printFlightList();
+  }
   // calibrate the IMU
-  if (commandbuffer[0] == 'c')
+  else if (commandbuffer[0] == 'c')
   {
     Serial1.println(F("calibration\n"));
     // Do calibration suff
@@ -486,6 +571,20 @@ void interpretCommandBuffer(char *commandbuffer) {
     config.cksum = CheckSumConf(config);
     writeConfigStruc();
     Serial1.print(F("$OK;\n"));
+  }
+  //get all flight data
+  else if (commandbuffer[0] == 'a')
+  {
+    Serial1.print(F("$start;\n"));
+    //getFlightList()
+    int i;
+    ///todo
+    for (i = 0; i < logger.getLastFlightNbr() + 1; i++)
+    {
+      logger.printFlightData(i);
+    }
+
+    Serial1.print(F("$end;\n"));
   }
   //get altimeter config
   else if (commandbuffer[0] == 'b')
@@ -516,94 +615,19 @@ void interpretCommandBuffer(char *commandbuffer) {
     //FastReading = false;
     Serial1.print(F("$OK;\n"));
   }
-  //this will erase all flight
-  else if (commandbuffer[0] == 'e')
-  {
-    Serial1.println(F("Erase\n"));
-    logger.clearFlightList();
-    logger.writeFlightList();
-    currentFileNbr = 0;
-    currentMemaddress = 201;
-  }
-  //start or stop recording
-  else if (commandbuffer[0] == 'w')
-  {
-    if (commandbuffer[1] == '1') {
-      Serial1.print(F("Start Recording\n"));
-      recording = true;
-    }
-    else {
-      Serial1.print(F("Stop Recording\n"));
-      recording = false;
-    }
-    Serial1.print(F("$OK;\n"));
-  }
-  //this will read one flight
-  else if (commandbuffer[0] == 'r')
-  {
-    char temp[3];
-    /*Serial1.println(F("Read flight: "));
-    Serial1.println( commandbuffer[1]);
-    Serial1.println( "\n");*/
-    temp[0] = commandbuffer[1];
-    if (commandbuffer[2] != '\0')
-    {
-      temp[1] = commandbuffer[2];
-      temp[2] = '\0';
-    }
-    else
-      temp[1] = '\0';
-
-    if (atol(temp) > -1)
-    {
-      //logger.PrintFlight(atoi(temp));
-      Serial1.print(F("$start;\n"));
-      logger.printFlightData(atoi(temp));
-      Serial1.print(F("$end;\n"));
-    }
-    else
-      Serial1.println(F("not a valid flight"));
-  }
-  //Number of flight
-  else if (commandbuffer[0] == 'n')
-  {
-    Serial1.print(F("$start;\n"));
-    Serial1.print(F("$nbrOfFlight,"));
-    //Serial1.print(F("n;"));
-    //logger.printFlightList();
-    logger.readFlightList();
-    Serial1.print(logger.getLastFlightNbr()+1);
-    Serial1.print(";\n");
-    Serial1.print(F("$end;\n"));
-  }
-  //list all flights
-  else if (commandbuffer[0] == 'l')
-  {
-    Serial1.println(F("Flight List: \n"));
-    logger.printFlightList();
-  }  //get all flight data
-  else if (commandbuffer[0] == 'a')
-  {
-    Serial1.print(F("$start;\n"));
-    //getFlightList()
-    int i;
-    ///todo
-    for (i = 0; i < logger.getLastFlightNbr() + 1; i++)
-    {
-      logger.printFlightData(i);
-    }
-
-    Serial1.print(F("$end;\n"));
-  }
   //telemetry on/off
   else if (commandbuffer[0] == 'y')
   {
     if (commandbuffer[1] == '1') {
+#ifdef SERIAL_DEBUG
       Serial1.print(F("Telemetry enabled\n"));
+#endif
       telemetryEnable = true;
     }
     else {
+#ifdef SERIAL_DEBUG
       Serial1.print(F("Telemetry disabled\n"));
+#endif
       telemetryEnable = false;
     }
     Serial1.print(F("$OK;\n"));
@@ -628,7 +652,7 @@ void SendTelemetry(float * arr, int freq) {
   //float batVoltage;
   if (last_telem_time - millis() > freq)
     if (telemetryEnable) {
-      currAltitude = ReadAltitude()-initialAltitude;
+      currAltitude = ReadAltitude() - initialAltitude;
       pressure = bmp.readPressure();
       temperature = bmp.readTemperature();
       last_telem_time = millis();
@@ -677,7 +701,7 @@ void SendTelemetry(float * arr, int freq) {
       //Batt voltage
       pinMode(PB1, INPUT_ANALOG);
       int batVoltage = analogRead(PB1);
-     // Serial1.print(batVoltage);
+      // Serial1.print(batVoltage);
       float bat = VOLT_DIVIDER * ((float)(batVoltage * 3300) / (float)4096000);
       Serial1.print(bat);
       Serial1.print(F(","));

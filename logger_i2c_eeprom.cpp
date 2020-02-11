@@ -247,7 +247,10 @@ void logger_I2C_eeprom::printFlightData(int flightNbr)
     }
   }
 }
-
+long logger_I2C_eeprom::getSizeOfFlightData()
+{
+  return sizeof(_FlightData);
+}
 boolean logger_I2C_eeprom::CanRecord()
 {
   long lastFlight;

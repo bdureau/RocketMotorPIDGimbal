@@ -12,6 +12,11 @@ extern const int pinSpeaker;
 
 #define VOLT_DIVIDER 10*(R1/(R1+R2))
 #include "Arduino.h"
+
+// If you want to have additionnal debugging uncomment it
+//#define SERIAL_DEBUG
+#undef SERIAL_DEBUG
+
 //used for writing in the microcontroler internal eeprom
 #include <EEPROM.h>
 
