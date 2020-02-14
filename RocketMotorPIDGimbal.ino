@@ -57,6 +57,10 @@ unsigned long initialTime = 0;
 unsigned long prevTime = 0;
 unsigned long diffTime;
 unsigned long currentTime = 0;
+/*
+ * ReadAltitude()
+ * Read altitude and filter any nose with a Kalman filter
+ */
 double ReadAltitude()
 {
   return KalmanCalc(bmp.readAltitude());
@@ -85,11 +89,7 @@ void setup()
   ServoX.write(90);
   ServoY.write(90);
   delay(500);
-  //software pull up so that all bluetooth modules work!!!
-  //This is on the serial1 RX pin
-  //pinMode(PA10, INPUT_PULLUP);
-  //pinMode(PA10, INPUT_PULLDOWN);
-
+ 
   Wire.begin();
   //default values
   defaultConfig();
@@ -183,7 +183,7 @@ void setup()
 
 /*
 
-   Initialize MUP6050
+   Initialize the MUP6050 sensor
 
 */
 void initialize() {
@@ -267,8 +267,7 @@ void loop(void)
 void Mainloop(void)
 {
   long startTime = millis();
-  /*Serial1.print("Start main loop: ");
-    Serial1.println(startTime);*/
+  
   //read current altitude
   currAltitude = (ReadAltitude() - initialAltitude);
   bool lift = false;
@@ -345,7 +344,7 @@ void Mainloop(void)
     //store start and end address
     logger.setFlightEndAddress (currentFileNbr, currentMemaddress - 1);
     logger.writeFlightList();
-    // Serial1.println("We have landed");
+   
   }
 
   // get current FIFO count
@@ -413,6 +412,7 @@ void Mainloop(void)
   q1[3] = q.z;
   //serialPrintFloatArr(q1, 4);
   SendTelemetry(q1, 500);
+  checkBatVoltage(BAT_MIN_VOLTAGE);
 
   if (!liftOff) // && !canRecord)
     delay(10);
@@ -567,7 +567,6 @@ void interpretCommandBuffer(char *commandbuffer) {
     config.gx_offset = gx_offset;
     config.gy_offset = gy_offset;
     config.gz_offset = gz_offset;
-    //config.cksum = 0xBA;
     config.cksum = CheckSumConf(config);
     writeConfigStruc();
     Serial1.print(F("$OK;\n"));
@@ -707,6 +706,8 @@ void SendTelemetry(float * arr, int freq) {
       Serial1.print(F(","));
       //tab3
       serialPrintFloatArr(arr, 4);
+      //Serial1.print(F(","));
+      Serial1.print((int)(100*((float)logger.getLastFlightEndAddress()/endAddress))); 
       Serial1.println(F(";"));
     }
 }
@@ -718,8 +719,6 @@ void SendTelemetry(float * arr, int freq) {
 */
 void SendAltiConfig() {
   bool ret = readAltiConfig();
-  //if (!ret)
-  //  Serial1.print(F("invalid conf"));
 
   Serial1.print(F("$alticonfig"));
   Serial1.print(F(","));
@@ -936,5 +935,29 @@ void calibration() {
     else gz_offset = gz_offset - mean_gz / (giro_deadzone + 1);
 
     if (ready == 6) break;
+  }
+}
+
+/*
+
+   Check if the battery voltage is OK.
+   If not warn the user so that the battery does not get
+   damaged by over discharging
+*/
+void checkBatVoltage(float minVolt) {
+
+  pinMode(PB1, INPUT_ANALOG);
+  int batVoltage = analogRead(PB1);
+ 
+  float bat = VOLT_DIVIDER * ((float)(batVoltage * 3300) / (float)4096000);
+  
+  if (bat < minVolt) {
+    for (int i = 0; i < 10; i++)
+    {
+      tone(pinSpeaker, 1600, 1000);
+      delay(50);
+      noTone(pinSpeaker);
+    }
+    delay(1000);
   }
 }

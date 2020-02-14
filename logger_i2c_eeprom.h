@@ -86,6 +86,7 @@ public:
     boolean CanRecord();
     int writeFastFlight(int eeaddress);
     long getSizeOfFlightData();
+    long getLastFlightEndAddress();
     
 private:
     

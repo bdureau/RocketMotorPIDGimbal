@@ -274,3 +274,23 @@ boolean logger_I2C_eeprom::CanRecord()
   }
   return true;
 }
+/*
+ * 
+ * getLastFlightNbr()
+ * Parse the flight index end check if the flight_start address is > 0
+ * return -1 if no flight have been recorded else return the flight number
+ * 
+ */
+long logger_I2C_eeprom::getLastFlightEndAddress()
+{
+  int i;
+  for (i = 0; i < 25; i++)
+  {
+    if (_FlightConfig[i].flight_start == 0)
+    {
+      break;
+    }
+  }
+  i--;
+  return _FlightConfig[i].flight_stop;
+}
