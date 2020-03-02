@@ -1,4 +1,4 @@
-https://github.com/bdureau/RocketMotorPIDGimbal/edit/master/README.md# RocketMotorPIDGimbal
+# RocketMotorPIDGimbal
 This is yet again another attempt to fly a model rocket without fins using long burn motors.
 <img src="/photos/motor_gimbal1.png" width="49%">
 
