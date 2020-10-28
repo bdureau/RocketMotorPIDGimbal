@@ -5,7 +5,7 @@
                 Angle changes can be monitored using a USB cable or a bluetooth interface
                 Inspired by various camera gimbal projects
    Author: Boris du Reau
-   Date: June 2018
+   Date: June 2018-2020
    Sensor used is an MPU6050 board
 
    You can use an Arduino Uno/Nano or stm32F103C board
@@ -25,7 +25,11 @@
 
   This can be confirgured using the Gimbale Android application
   which is also hosted on Github
-
+Version 1.0: 
+Can log the data from all sensors on the eeprom and comunicate with an Android device 
+via the serial port or a bluetooth module.  
+Version 1.1
+Configure the accelero and gyro range
 
 */
 
@@ -65,6 +69,15 @@ double ReadAltitude()
 {
   return KalmanCalc(bmp.readAltitude());
 }
+// ================================================================
+// ===               INTERRUPT DETECTION ROUTINE                ===
+// ================================================================
+
+volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
+void dmpDataReady() {
+  mpuInterrupt = true;
+}
+
 /*
    Initial setup
     do the board calibration
@@ -115,7 +128,7 @@ void setup()
 
   // configure LED for output
   pinMode(LED_PIN, OUTPUT);
-
+  pinMode(INTERRUPT_PIN, INPUT);
   boolean softConfigValid = false;
   // Read altimeter softcoded configuration
   softConfigValid = readAltiConfig();
@@ -204,6 +217,7 @@ void initialize() {
   // MPU6050_GYRO_FS_500
   // MPU6050_GYRO_FS_1000
   // MPU6050_GYRO_FS_2000
+  
 #ifdef SERIAL_DEBUG
   Serial1.println(F("Initializing MPU 6050 device..."));
 #endif
@@ -216,6 +230,7 @@ void initialize() {
 #ifdef SERIAL_DEBUG
   Serial1.println(F("Initializing DMP"));
 #endif
+  mpu.initialize(); //added 
   devStatus = mpu.dmpInitialize();
   mpu.setXAccelOffset(ax_offset);
   mpu.setYAccelOffset(ay_offset);
@@ -225,8 +240,8 @@ void initialize() {
   mpu.setZGyroOffset(gz_offset);
   //turn the PID on
   //servo's can go from 60 degree's to 120 degree so set the angle correction to + - 30 degrees max
-  myPIDX.SetOutputLimits(-30, 30);
-  myPIDY.SetOutputLimits(-30, 30);
+  myPIDX.SetOutputLimits(-5, 5);
+  myPIDY.SetOutputLimits(-5, 5);
   myPIDX.SetMode(AUTOMATIC);
   myPIDY.SetMode(AUTOMATIC);
   SetpointX = 0;
@@ -239,7 +254,9 @@ void initialize() {
     Serial1.println(F("Enabling DMP"));
 #endif
     mpu.setDMPEnabled(true);
-
+attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
+    mpuIntStatus = mpu.getIntStatus();
+    dmpReady = true;
     // get expected DMP packet size for later comparison
     packetSize = mpu.dmpGetFIFOPacketSize();
   }
@@ -253,6 +270,8 @@ void initialize() {
 #endif
   }
 }
+
+ 
 
 /*
 
@@ -347,29 +366,43 @@ void Mainloop(void)
    
   }
 
+ 
+/////////
+
+ // wait for MPU interrupt or extra packet(s) available
+  while (!mpuInterrupt && fifoCount < packetSize) {
+    if (mpuInterrupt && fifoCount < packetSize) {
+      // try to get out of the infinite loop
+      fifoCount = mpu.getFIFOCount();
+    }
+  }
+
+  // reset interrupt flag and get INT_STATUS byte
+  mpuInterrupt = false;
+  mpuIntStatus = mpu.getIntStatus();
+
   // get current FIFO count
   fifoCount = mpu.getFIFOCount();
 
   // check for overflow (this should never happen unless our code is too inefficient)
-  if ( fifoCount == 1024)
-  {
+  if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024) {
     // reset so we can continue cleanly
     mpu.resetFIFO();
-    //return;
-  }
+    fifoCount = mpu.getFIFOCount();
+    #ifdef SERIAL_DEBUG
+    Serial1.println(F("FIFO overflow!"));
+    #endif
+    // otherwise, check for DMP data ready interrupt (this should happen frequently)
+  } else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
+    // wait for correct available data length, should be a VERY short wait
+    while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
 
-  // check for correct available data length
-  if (fifoCount < packetSize)
-    return;
+    // read a packet from FIFO
+    mpu.getFIFOBytes(fifoBuffer, packetSize);
 
-  // read a packet from FIFO
-  mpu.getFIFOBytes(fifoBuffer, packetSize);
-
-  // track FIFO count here in case there is > 1 packet available
-  fifoCount -= packetSize;
-
-  // flush buffer to prevent overflow
-  // mpu.resetFIFO();
+    // track FIFO count here in case there is > 1 packet available
+    // (this lets us immediately read more without waiting for an interrupt)
+    fifoCount -= packetSize;
 
   // display Euler angles in degrees
   mpu.dmpGetQuaternion(&q, fifoBuffer);
@@ -379,51 +412,49 @@ void Mainloop(void)
   mpuPitch = ypr[PITCH] * 180 / M_PI;
   mpuRoll = ypr[ROLL] * 180 / M_PI;
   mpuYaw  = ypr[YAW] * 180 / M_PI;
+  
   /*mpuRoll = -ypr[ROLL] * 180 / M_PI;
     mpuYaw  = -ypr[YAW] * 180 / M_PI;*/
 
   // flush buffer to prevent overflow
-  mpu.resetFIFO();
-
+  //mpu.resetFIFO();
+  }
   // blink LED to indicate activity
   blinkState = !blinkState;
   digitalWrite(LED_PIN, blinkState);
 
   // flush buffer to prevent overflow
-  mpu.resetFIFO();
+  //mpu.resetFIFO();
   InputX = mpuPitch;
   myPIDX.Compute();
   InputY = mpuRoll;
   myPIDY.Compute();
 
   //if using PID do those
-  ServoX.write(-OutputX + 90);
-  ServoY.write(OutputY + 90);
+  //ServoX.write(-OutputX + 90);
+  //ServoY.write(OutputY + 90);
 
   // if you do not want to use the PID
-  // ServoX.write(-mpuPitch + 90);
-  // ServoY.write(mpuRoll + 90);
+   ServoX.write(-mpuPitch + 90);
+   ServoY.write(mpuRoll + 90);
 
   float q1[4];
   //mpu.dmpGetQuaternion(&q, fifoBuffer);
+  
   q1[0] = q.w;
   q1[1] = q.x;
   q1[2] = q.y;
   q1[3] = q.z;
+ 
   //serialPrintFloatArr(q1, 4);
-  SendTelemetry(q1, 500);
+  SendTelemetry(q1, 200);
   checkBatVoltage(BAT_MIN_VOLTAGE);
 
   if (!liftOff) // && !canRecord)
     delay(10);
 
   // flush buffer to prevent overflow
-  mpu.resetFIFO();
-  /*Serial1.print("End main loop: ");
-    Serial1.println(millis());
-    long diffTime = startTime - millis();
-    Serial1.print("Diff time: ");
-    Serial1.println(diffTime);*/
+ // mpu.resetFIFO();
 }
 
 
@@ -551,7 +582,7 @@ void interpretCommandBuffer(char *commandbuffer) {
   // calibrate the IMU
   else if (commandbuffer[0] == 'c')
   {
-    Serial1.println(F("calibration\n"));
+    //Serial1.println(F("calibration\n"));
     // Do calibration suff
     state = 0;
     calibrate();
@@ -708,6 +739,13 @@ void SendTelemetry(float * arr, int freq) {
       serialPrintFloatArr(arr, 4);
       //Serial1.print(F(","));
       Serial1.print((int)(100*((float)logger.getLastFlightEndAddress()/endAddress))); 
+      Serial1.print(F(","));
+      Serial1.print((int)correct);
+      Serial1.print(F(","));
+      Serial1.print(-mpuPitch + 180); // ServoX
+      Serial1.print(F(","));
+      //Serial1.print(mpuRoll + 90); //ServoY
+      Serial1.print(mpuYaw + 90); //ServoY
       Serial1.println(F(";"));
     }
 }
@@ -774,7 +812,14 @@ void SendAltiConfig() {
   Serial1.print(config.endRecordAltitude);
   Serial1.print(F(","));
   Serial1.print(config.beepingFrequency);
+  Serial1.print(F(","));
+  Serial1.print(config.liftOffDetect);
+  Serial1.print(F(","));
+  Serial1.print(config.gyroRange);
+  Serial1.print(F(","));
+  Serial1.print(config.acceleroRange);
   Serial1.print(F(";\n"));
+  
 }
 
 
@@ -787,6 +832,7 @@ void SendAltiConfig() {
 
 */
 void calibrate() {
+  #ifdef SERIAL_DEBUG
   // start message
   Serial1.println("\nMPU6050 Calibration Sketch");
   //delay(1000);
@@ -794,6 +840,7 @@ void calibrate() {
   //delay(1000);
   // verify connection
   Serial1.println(mpu.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
+  #endif
   //delay(1000);
   // reset offsets
   mpu.setXAccelOffset(0);
@@ -805,14 +852,18 @@ void calibrate() {
 
   while (1) {
     if (state == 0) {
+      #ifdef SERIAL_DEBUG
       Serial1.println("\nReading sensors for first time...");
+      #endif
       meansensors();
       state++;
       delay(100);
     }
 
     if (state == 1) {
+      #ifdef SERIAL_DEBUG
       Serial1.println("\nCalculating offsets...");
+      #endif
       calibration();
       state++;
       delay(100);
@@ -820,6 +871,7 @@ void calibrate() {
 
     if (state == 2) {
       meansensors();
+      #ifdef SERIAL_DEBUG
       Serial1.println("\nFINISHED!");
       Serial1.print("\nSensor readings with offsets:\t");
       Serial1.print(mean_ax);
@@ -849,6 +901,7 @@ void calibrate() {
       Serial1.println("Check that your sensor readings are close to 0 0 16384 0 0 0");
       Serial1.println("If calibration was succesful write down your offsets so you can set them in your projects using something similar to mpu.setXAccelOffset(youroffset)");
       //while (1);
+      #endif
       break;
     }
   }
@@ -887,6 +940,7 @@ void meansensors() {
 }
 
 void calibration() {
+  int calibrationPass =0;
   /*ax_offset = -mean_ax / 8;
     ay_offset = -mean_ay / 8;
     az_offset = (16384 - mean_az) / 8;*/
@@ -908,7 +962,13 @@ void calibration() {
     mpu.setZGyroOffset(gz_offset);
 
     meansensors();
+    calibrationPass ++;
+    
+    Serial1.print("$CAL_PASS ");
+    Serial1.println(calibrationPass);
+    #ifdef SERIAL_DEBUG
     Serial1.println("...");
+    #endif
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
     if (abs(mean_ax) <= acel_deadzone) ready++;

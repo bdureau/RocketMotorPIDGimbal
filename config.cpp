@@ -29,7 +29,8 @@ void defaultConfig()
   config.endRecordAltitude=3;
   config.beepingFrequency=440;
   config.liftOffDetect=0;
-   
+  config.gyroRange=0;
+  config.acceleroRange=0; 
   config.cksum=CheckSumConf(config);
   //config.cksum=0xBA; 
 }
@@ -144,6 +145,10 @@ bool  writeAltiConfig( char *p ) {
       break;  
     case 23:
       config.liftOffDetect=atoi(str);  
+    case 24:  
+      config.gyroRange=atoi(str);
+    case 25:  
+      config.acceleroRange=atoi(str);
       break;
     }
     i++;
@@ -151,7 +156,7 @@ bool  writeAltiConfig( char *p ) {
   }
 
   //we have a partial config
-  if (i<22)
+  if (i<25)
     return false;
     
   //calculate checksum

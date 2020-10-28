@@ -1,5 +1,6 @@
 #ifndef _GLOBAL_H
 #define _GLOBAL_H
+#define INTERRUPT_PIN PB12
 #define LED_PIN PC13 //pin 13 for the arduino Uno and PC13 for the stm32 
 //used for writing in the microcontroler internal eeprom
 #include <EEPROM.h>
@@ -21,6 +22,7 @@ Servo ServoY;   // Y axis Servo
 float mpuPitch = 0;
 float mpuRoll = 0;
 float mpuYaw = 0;
+float correct;
 
 
 // Create  MPU object
@@ -30,6 +32,8 @@ MPU6050 mpu;
 
 
 // MPU control/status vars
+bool dmpReady = false;  // set true if DMP init was successful
+uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
 uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
 uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
 uint16_t fifoCount;     // count of all bytes currently in FIFO
@@ -37,6 +41,7 @@ uint8_t fifoBuffer[64]; // FIFO storage buffer
 
 // orientation/motion vars
 Quaternion q;           // [w, x, y, z]         quaternion container
+Quaternion hq;          // quaternion conjugate
 VectorFloat gravity;    // [x, y, z]            gravity vector
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
