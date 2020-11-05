@@ -2,7 +2,7 @@
 #define _CONFIG_H
 
 #define MAJOR_VERSION 1
-#define MINOR_VERSION 0
+#define MINOR_VERSION 1
 #define CONFIG_START 32
 extern const int pinSpeaker;
 #define BAT_MIN_VOLTAGE 7.0
