@@ -52,11 +52,12 @@ extern ConfigStruct config;
 extern void defaultConfig();
 extern boolean readAltiConfig();
 extern void writeConfigStruc();
-extern unsigned int CheckSumConf( ConfigStruct );
+//extern unsigned int CheckSumConf( ConfigStruct );
 extern bool writeAltiConfig( char *p );
 
 extern void longBeep();
 extern void shortBeep();
 extern void beepAltiVersion (int majorNbr, int minorNbr);
+extern unsigned int msgChk( char * buffer, long length );
 
 #endif

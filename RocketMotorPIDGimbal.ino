@@ -486,7 +486,7 @@ void MainMenu()
   char readVal = ' ';
   int i = 0;
 
-  char commandbuffer[300];
+  char commandbuffer[1000];
 
 
   while ( readVal != ';') {
@@ -616,7 +616,7 @@ void interpretCommandBuffer(char *commandbuffer) {
     config.gx_offset = gx_offset;
     config.gy_offset = gy_offset;
     config.gz_offset = gz_offset;
-    config.cksum = CheckSumConf(config);
+    config.cksum = 0;//CheckSumConf(config);
     writeConfigStruc();
     Serial1.print(F("$OK;\n"));
   }
@@ -650,6 +650,7 @@ void interpretCommandBuffer(char *commandbuffer) {
       Serial1.print(F("$OK;\n"));
     else
       Serial1.print(F("$KO;\n"));
+      commandbuffer="";
   }
   //reset alti config
   else if (commandbuffer[0] == 'd')
