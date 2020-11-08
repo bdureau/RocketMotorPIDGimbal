@@ -486,11 +486,12 @@ void MainMenu()
   char readVal = ' ';
   int i = 0;
 
-  char commandbuffer[1000];
+  char commandbuffer[1000]="";
 
 
   while ( readVal != ';') {
-    Mainloop();
+    if(mainLoopEnable)
+      Mainloop();
     while (Serial1.available())
     {
       readVal = Serial1.read();
@@ -508,6 +509,8 @@ void MainMenu()
   }
 
   interpretCommandBuffer(commandbuffer);
+for (int i=0; i< sizeof(commandbuffer); i++)
+  commandbuffer[i]='\0';
 }
 /*
 
@@ -681,10 +684,28 @@ void interpretCommandBuffer(char *commandbuffer) {
     }
     Serial1.print(F("$OK;\n"));
   }
+  //mainloop on/off
+  else if (commandbuffer[0] == 'm')
+  {
+    if (commandbuffer[1] == '1') {
+#ifdef SERIAL_DEBUG
+      Serial1.print(F("main Loop enabled\n"));
+#endif
+      mainLoopEnable = true;
+    }
+    else {
+#ifdef SERIAL_DEBUG
+      Serial1.print(F("main loop disabled\n"));
+#endif
+      mainLoopEnable = false;
+    }
+    Serial1.print(F("$OK;\n"));
+  }
   else
   {
     Serial1.println(F("Unknown command" ));
     Serial1.println(commandbuffer[0]);
+    Serial1.println(commandbuffer);
   }
 }
 

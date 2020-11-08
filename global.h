@@ -16,6 +16,7 @@
 BMP085 bmp;
 bool blinkState = true;
 bool telemetryEnable = false;
+bool mainLoopEnable = true;
 
 Servo ServoX;   // X axis Servo
 Servo ServoY;   // Y axis Servo
