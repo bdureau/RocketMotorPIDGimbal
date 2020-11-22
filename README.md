@@ -13,3 +13,6 @@ It uses a bluetooth module (HC-05, HC-06 etc ...)to communicate with an Android 
 
 Use it with my Gimbal console application
 https://github.com/bdureau/MotorGimbalConsole
+
+I also have another version with the Bosch BNO055 sensor which is a lot less complex
+https://github.com/bdureau/RocketMotorPIDGimbal_bno055/
