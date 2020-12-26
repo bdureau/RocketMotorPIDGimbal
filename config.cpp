@@ -31,21 +31,11 @@ void defaultConfig()
   config.liftOffDetect=0;
   config.gyroRange=0;
   config.acceleroRange=0; 
-  config.cksum=0;//CheckSumConf(config);
+  config.cksum=CheckSumConf(config);
   //config.cksum=0xBA; 
 }
 
-/*unsigned int CheckSumConf( ConfigStruct cnf)
- {
-     int i;
-     unsigned int chk=0;
-    
-     //for (i=0; i < (sizeof(cnf)-2); i++) 
-     for (i=0; i < (sizeof(cnf)-sizeof(int)); i++) 
-     chk += *((char*)&cnf + i);
-    
-     return chk;
- }*/
+
 
 boolean readAltiConfig() {
   //set the config to default values so that if any have not been configured we can use the default ones
@@ -55,10 +45,10 @@ boolean readAltiConfig() {
     *((char*)&config + i) = EEPROM.read(CONFIG_START + i);
   }
 
- /* if ( config.cksum != CheckSumConf(config) ) {
+  if ( config.cksum != CheckSumConf(config) ) {
   
     return false;
-  }*/
+  }
 
   return true;
 
@@ -198,7 +188,7 @@ bool  writeAltiConfig( char *p ) {
   if(msgChk(msg, sizeof(msg)) != strChk)
      return false;
   //calculate checksum
-  //config.cksum = CheckSumConf(config);
+  config.cksum = CheckSumConf(config);
  
   writeConfigStruc();
   return true;
@@ -206,16 +196,24 @@ bool  writeAltiConfig( char *p ) {
 
 unsigned int msgChk( char * buffer, long length ) {
 
-     //static char tBuf[4];
      long index;
      unsigned int checksum;
 
      for( index = 0L, checksum = 0; index < length; checksum += (unsigned int) buffer[index++] );
-     //sprintf( tBuf, "%3d", (unsigned int) ( checksum % 256 ) );
-     //return( tBuf );
      return (unsigned int) ( checksum % 256 );
 
 }
+
+unsigned int CheckSumConf( ConfigStruct cnf)
+ {
+     int i;
+     unsigned int chk=0;
+    
+     for (i=0; i < (sizeof(cnf)-sizeof(int)); i++) 
+     chk += *((char*)&cnf + i);
+    
+     return chk;
+ }
 void writeConfigStruc()
 {
     int i;

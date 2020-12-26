@@ -105,7 +105,35 @@ void setup()
  
   Wire.begin();
   //default values
-  defaultConfig();
+  //defaultConfig();
+  // Read altimeter softcoded configuration
+  boolean softConfigValid = false;
+  softConfigValid = readAltiConfig();
+
+  // check if configuration is valid
+  if (!softConfigValid)
+  {
+    //default values
+    defaultConfig();
+/*#ifdef SERIAL_DEBUG
+    Serial1.println(F("Config invalid"));
+    Serial1.println("ax_offset =" + config.ax_offset);
+    Serial1.println("ay_offset =" + config.ay_offset);
+    Serial1.println("az_offset =" + config.az_offset);
+    Serial1.println("gx_offset =" + config.gx_offset);
+    Serial1.println("gy_offset =" + config.gy_offset);
+    Serial1.println("gz_offset =" + config.gz_offset);
+#endif*/
+    //delay(1000);
+    //calibrate();
+    config.ax_offset = ax_offset;
+    config.ay_offset = ay_offset;
+    config.az_offset = az_offset;
+    config.gx_offset = gx_offset;
+    config.gy_offset = gy_offset;
+    config.gz_offset = gz_offset;
+    writeConfigStruc();
+  }
   Serial1.begin(38400);
   while (!Serial1);      // wait for Leonardo enumeration, others continue immediately
 
@@ -129,35 +157,8 @@ void setup()
   // configure LED for output
   pinMode(LED_PIN, OUTPUT);
   pinMode(INTERRUPT_PIN, INPUT);
-  boolean softConfigValid = false;
-  // Read altimeter softcoded configuration
-  softConfigValid = readAltiConfig();
-
-  // check if configuration is valid
-  if (!softConfigValid)
-  {
-    //default values
-    defaultConfig();
-#ifdef SERIAL_DEBUG
-    Serial1.println(F("Config invalid"));
-    Serial1.println("ax_offset =" + config.ax_offset);
-    Serial1.println("ay_offset =" + config.ay_offset);
-    Serial1.println("az_offset =" + config.az_offset);
-    Serial1.println("gx_offset =" + config.gx_offset);
-    Serial1.println("gy_offset =" + config.gy_offset);
-    Serial1.println("gz_offset =" + config.gz_offset);
-#endif
-    //delay(1000);
-    //calibrate();
-    config.ax_offset = ax_offset;
-    config.ay_offset = ay_offset;
-    config.az_offset = az_offset;
-    config.gx_offset = gx_offset;
-    config.gy_offset = gy_offset;
-    config.gz_offset = gz_offset;
-    //config.cksum = 0xBA;
-    writeConfigStruc();
-  }
+  
+  
 
   // INPUT CALIBRATED OFFSETS HERE; SPECIFIC FOR EACH UNIT AND EACH MOUNTING CONFIGURATION!!!!
   // use the calibrate function for yours
@@ -714,7 +715,7 @@ void interpretCommandBuffer(char *commandbuffer) {
    Send telemetry to the Android device
 
 */
-void SendTelemetry(float * arr, int freq) {
+/*void SendTelemetry(float * arr, int freq) {
 
   float currAltitude;
   float temperature;
@@ -787,6 +788,120 @@ void SendTelemetry(float * arr, int freq) {
       //Serial1.print(mpuRoll + 90); //ServoY
       Serial1.print(mpuYaw + 90); //ServoY
       Serial1.println(F(";"));
+    }
+}*/
+
+void SendTelemetry(float * arr, int freq) {
+
+  float currAltitude;
+  float temperature;
+  int pressure;
+
+  char myTelemetry[300]="";
+  
+  //float batVoltage;
+  if (last_telem_time - millis() > freq)
+    if (telemetryEnable) {
+      currAltitude = ReadAltitude() - initialAltitude;
+      pressure = bmp.readPressure();
+      temperature = bmp.readTemperature();
+      last_telem_time = millis();
+      strcat( myTelemetry , "telemetry,RocketMotorGimbal,");
+      //tab 1
+      //GyroX
+      char temp[10];
+      sprintf(temp, "%f", mpu.getRotationX());
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      //GyroY
+      sprintf(temp, "%f", mpu.getRotationZ());
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      //GyroZ
+      sprintf(temp, "%f", mpu.getRotationY());
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      //AccelX
+      sprintf(temp, "%f", mpu.getAccelerationX());
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      //AccelY
+      sprintf(temp, "%f", mpu.getAccelerationZ());
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      //AccelZ
+      sprintf(temp, "%f", mpu.getAccelerationY());
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      //OrientX
+      sprintf(temp, "%f", mpuYaw);
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      //OrientY
+      sprintf(temp, "%f", mpuRoll);
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      //OrientZ
+      sprintf(temp, "%f", mpuPitch);
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      //tab 2
+      //Altitude
+      sprintf(temp, "%i", currAltitude);
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ","); 
+      //temperature
+      sprintf(temp, "%i", temperature);
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      //Pressure
+      sprintf(temp, "%i", pressure);
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      //Batt voltage
+      pinMode(PB1, INPUT_ANALOG);
+      int batVoltage = analogRead(PB1);
+      float bat = VOLT_DIVIDER * ((float)(batVoltage * 3300) / (float)4096000);
+      sprintf(temp, "%f", bat);
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      //tab3
+      floatToByte(arr[0], temp);
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      floatToByte(arr[1], temp);
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      floatToByte(arr[2], temp);
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      floatToByte(arr[3], temp);
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      
+      sprintf(temp, "%i", (int)(100 * ((float)logger.getLastFlightEndAddress() / endAddress)));
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+  
+      sprintf(temp, "%i", (int)correct);
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+
+      sprintf(temp, "%i", -mpuPitch + 180);
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+
+      sprintf(temp, "%i", mpuYaw + 90);
+      strcat( myTelemetry , temp); 
+      strcat( myTelemetry, ",");
+      
+      unsigned int chk;
+      chk = msgChk(myTelemetry, sizeof(myTelemetry));
+      sprintf(temp, "%i", chk);
+      strcat(myTelemetry,temp);
+      strcat(myTelemetry, ";");
+      Serial1.print("$");
+      Serial1.println(myTelemetry);
     }
 }
 

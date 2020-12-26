@@ -3,7 +3,7 @@
 // ================================================================
 // === Those 2 functions will format the data                   ===
 // ================================================================
-void serialPrintFloatArr(float * arr, int length) {
+/*void serialPrintFloatArr(float * arr, int length) {
   for (int i = 0; i < length; i++) {
     serialFloatPrint(arr[i]);
     Serial1.print(",");
@@ -24,7 +24,7 @@ void serialFloatPrint(float f) {
     Serial1.print(c1);
     Serial1.print(c2);
   }
-}
+}*/
 void floatToByte(float f, char *ret) {
   byte * b = (byte *) &f;
   for (int i = 0; i < 4; i++) {
@@ -34,7 +34,7 @@ void floatToByte(float f, char *ret) {
 
     char c1 = (b1 < 10) ? ('0' + b1) : 'A' + b1 - 10;
     char c2 = (b2 < 10) ? ('0' + b2) : 'A' + b2 - 10;
-    ret[0] = c1;
-    ret[1] = c2;
+    ret[i*2] = c1;
+    ret[(i*2)+1] = c2;
   }
 }
