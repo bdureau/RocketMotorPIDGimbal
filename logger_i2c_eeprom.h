@@ -4,6 +4,7 @@
 #include <Wire.h>
 
 #include "utils.h"
+#include "config.h"
 
 #if defined(ARDUINO) && ARDUINO >= 100
 #include "Arduino.h"
@@ -81,7 +82,7 @@ public:
     void getFlightRocketPos(long *pos);
     long getFlightStart(int flightNbr);
     long getFlightStop(int flightNbr);
-    void PrintFlight(int flightNbr);
+    //void PrintFlight(int flightNbr);
     void printFlightData(int flightNbr);
     boolean CanRecord();
     int writeFastFlight(int eeaddress);
