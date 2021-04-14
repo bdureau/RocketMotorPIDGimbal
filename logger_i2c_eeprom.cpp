@@ -32,7 +32,7 @@ int logger_I2C_eeprom::readFlightList() {
   return FLIGHT_LIST_START + sizeof(_FlightConfig) ;
 }
 
-int logger_I2C_eeprom::readFlight(int eeaddress) {
+long logger_I2C_eeprom::readFlight(long eeaddress) {
   eep.read(eeaddress, ((byte*)&_FlightData), sizeof(_FlightData));
   return eeaddress + sizeof(_FlightData);
 }
@@ -43,7 +43,7 @@ int logger_I2C_eeprom::writeFlightList()
   return FLIGHT_LIST_START + sizeof(_FlightConfig);
 }
 
-int logger_I2C_eeprom::writeFastFlight(int eeaddress){
+long logger_I2C_eeprom::writeFastFlight(long eeaddress){
   eep.write(eeaddress, ((byte*)&_FlightData), sizeof(_FlightData));
   return eeaddress + sizeof(_FlightData);
 }

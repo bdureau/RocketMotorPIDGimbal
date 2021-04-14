@@ -5,7 +5,7 @@
 //used for writing in the microcontroler internal eeprom
 #include <EEPROM.h>
 #include <Servo.h> //servo library
-#include <PWMServo.h>
+//#include <PWMServo.h>
 #include <I2Cdev.h>
 #include <MPU6050_6Axis_MotionApps20.h> // Gyroscope and axcelerometer libraries
 #include <PID_v1.h> // Arduino PID library

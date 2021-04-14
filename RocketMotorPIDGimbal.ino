@@ -30,7 +30,7 @@ Can log the data from all sensors on the eeprom and comunicate with an Android d
 via the serial port or a bluetooth module.  
 Version 1.1
 Configure the accelero and gyro range
-
+Fixes, added checksum
 */
 
 
@@ -795,7 +795,7 @@ void SendTelemetry(float * arr, int freq) {
 
   float currAltitude;
   float temperature;
-  int pressure;
+  long pressure;
 
   char myTelemetry[300]="";
   
@@ -809,52 +809,61 @@ void SendTelemetry(float * arr, int freq) {
       //tab 1
       //GyroX
       char temp[10];
-      sprintf(temp, "%f", mpu.getRotationX());
+      sprintf(temp, "%l", mpu.getRotationX());
+      //dtostrf(mpu.getRotationX(), 4, 2, temp);
       strcat( myTelemetry , temp); 
       strcat( myTelemetry, ",");
       //GyroY
-      sprintf(temp, "%f", mpu.getRotationZ());
+      sprintf(temp, "%l", mpu.getRotationZ());
       strcat( myTelemetry , temp); 
+      //dtostrf(mpu.getRotationZ(), 4, 2, temp);
       strcat( myTelemetry, ",");
       //GyroZ
-      sprintf(temp, "%f", mpu.getRotationY());
+      sprintf(temp, "%l", mpu.getRotationY());
+      //dtostrf(mpu.getRotationY(), 4, 2, temp);
       strcat( myTelemetry , temp); 
       strcat( myTelemetry, ",");
       //AccelX
-      sprintf(temp, "%f", mpu.getAccelerationX());
+      sprintf(temp, "%l", mpu.getAccelerationX());
+      //dtostrf(mpu.getAccelerationX(), 4, 2, temp);
       strcat( myTelemetry , temp); 
       strcat( myTelemetry, ",");
       //AccelY
-      sprintf(temp, "%f", mpu.getAccelerationZ());
+      sprintf(temp, "%l", mpu.getAccelerationZ());
       strcat( myTelemetry , temp); 
+      //dtostrf(mpu.getAccelerationZ(), 4, 2, temp);
       strcat( myTelemetry, ",");
       //AccelZ
-      sprintf(temp, "%f", mpu.getAccelerationY());
+      sprintf(temp, "%l", mpu.getAccelerationY());
       strcat( myTelemetry , temp); 
+      //dtostrf(mpu.getAccelerationY(), 4, 2, temp);
       strcat( myTelemetry, ",");
       //OrientX
-      sprintf(temp, "%f", mpuYaw);
+      sprintf(temp, "%l", (long)mpuYaw);
       strcat( myTelemetry , temp); 
+      //dtostrf(mpuYaw, 4, 2, temp);
       strcat( myTelemetry, ",");
       //OrientY
-      sprintf(temp, "%f", mpuRoll);
+      sprintf(temp, "%l", (long)mpuRoll);
       strcat( myTelemetry , temp); 
+      //dtostrf(mpuRoll, 4, 2, temp);
       strcat( myTelemetry, ",");
       //OrientZ
-      sprintf(temp, "%f", mpuPitch);
+      sprintf(temp, "%l", (long)mpuPitch);
       strcat( myTelemetry , temp); 
+      //dtostrf(mpuPitch, 4, 2, temp);
       strcat( myTelemetry, ",");
       //tab 2
       //Altitude
-      sprintf(temp, "%i", currAltitude);
+      sprintf(temp, "%i",(int) currAltitude);
       strcat( myTelemetry , temp); 
       strcat( myTelemetry, ","); 
       //temperature
-      sprintf(temp, "%i", temperature);
+      sprintf(temp, "%i",(int) temperature);
       strcat( myTelemetry , temp); 
       strcat( myTelemetry, ",");
       //Pressure
-      sprintf(temp, "%i", pressure);
+      sprintf(temp, "%i", (int)pressure);
       strcat( myTelemetry , temp); 
       strcat( myTelemetry, ",");
       //Batt voltage
@@ -862,6 +871,7 @@ void SendTelemetry(float * arr, int freq) {
       int batVoltage = analogRead(PB1);
       float bat = VOLT_DIVIDER * ((float)(batVoltage * 3300) / (float)4096000);
       sprintf(temp, "%f", bat);
+      dtostrf(bat, 4, 2, temp);
       strcat( myTelemetry , temp); 
       strcat( myTelemetry, ",");
       //tab3
@@ -886,11 +896,11 @@ void SendTelemetry(float * arr, int freq) {
       strcat( myTelemetry , temp); 
       strcat( myTelemetry, ",");
 
-      sprintf(temp, "%i", -mpuPitch + 180);
+      sprintf(temp, "%i",(int) ( -mpuPitch + 180));
       strcat( myTelemetry , temp); 
       strcat( myTelemetry, ",");
 
-      sprintf(temp, "%i", mpuYaw + 90);
+      sprintf(temp, "%i",(int) ( mpuYaw + 90));
       strcat( myTelemetry , temp); 
       strcat( myTelemetry, ",");
       
