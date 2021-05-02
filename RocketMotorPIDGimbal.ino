@@ -715,81 +715,7 @@ void interpretCommandBuffer(char *commandbuffer) {
    Send telemetry to the Android device
 
 */
-/*void SendTelemetry(float * arr, int freq) {
 
-  float currAltitude;
-  float temperature;
-  int pressure;
-  //float batVoltage;
-  if (last_telem_time - millis() > freq)
-    if (telemetryEnable) {
-      currAltitude = ReadAltitude() - initialAltitude;
-      pressure = bmp.readPressure();
-      temperature = bmp.readTemperature();
-      last_telem_time = millis();
-      Serial1.print(F("$telemetry,"));
-      Serial1.print("RocketMotorGimbal");
-      Serial1.print(F(","));
-      //tab 1
-      //GyroX
-      Serial1.print(mpu.getRotationX());
-      Serial1.print(F(","));
-      //GyroY
-      Serial1.print(mpu.getRotationZ());
-      Serial1.print(F(","));
-      //GyroZ
-      Serial1.print(mpu.getRotationY());
-      Serial1.print(F(","));
-      //AccelX
-      Serial1.print(mpu.getAccelerationX());
-      Serial1.print(F(","));
-      //AccelY
-      Serial1.print(mpu.getAccelerationZ());
-      Serial1.print(F(","));
-      //AccelZ
-      Serial1.print(mpu.getAccelerationY());
-      Serial1.print(F(","));
-      //OrientX
-      Serial1.print(mpuYaw);
-      Serial1.print(F(","));
-      //OrientY
-      Serial1.print(mpuRoll); //mpuPitch
-      Serial1.print(F(","));
-      //OrientZ
-      Serial1.print(mpuPitch);//mpuRoll
-      Serial1.print(F(","));
-
-      //tab 2
-      //Altitude
-      Serial1.print(currAltitude);
-      Serial1.print(F(","));
-      //temperature
-      Serial1.print(temperature);
-      Serial1.print(F(","));
-      //Pressure
-      Serial1.print(pressure);
-      Serial1.print(F(","));
-      //Batt voltage
-      pinMode(PB1, INPUT_ANALOG);
-      int batVoltage = analogRead(PB1);
-      // Serial1.print(batVoltage);
-      float bat = VOLT_DIVIDER * ((float)(batVoltage * 3300) / (float)4096000);
-      Serial1.print(bat);
-      Serial1.print(F(","));
-      //tab3
-      serialPrintFloatArr(arr, 4);
-      //Serial1.print(F(","));
-      Serial1.print((int)(100*((float)logger.getLastFlightEndAddress()/endAddress))); 
-      Serial1.print(F(","));
-      Serial1.print((int)correct);
-      Serial1.print(F(","));
-      Serial1.print(-mpuPitch + 180); // ServoX
-      Serial1.print(F(","));
-      //Serial1.print(mpuRoll + 90); //ServoY
-      Serial1.print(mpuYaw + 90); //ServoY
-      Serial1.println(F(";"));
-    }
-}*/
 
 void SendTelemetry(float * arr, int freq) {
 
@@ -919,73 +845,7 @@ void SendTelemetry(float * arr, int freq) {
    Send the Gimbal configuration to the Android device
 
 */
-/*void SendAltiConfig() {
-  bool ret = readAltiConfig();
 
-  Serial1.print(F("$alticonfig"));
-  Serial1.print(F(","));
-  //AltimeterName
-  Serial1.print("RocketMotorGimbal");
-  Serial1.print(F(","));
-  Serial1.print(config.ax_offset);
-  Serial1.print(F(","));
-  Serial1.print(config.ay_offset);
-  Serial1.print(F(","));
-  Serial1.print(config.az_offset);
-  Serial1.print(F(","));
-  Serial1.print(config.gx_offset);
-  Serial1.print(F(","));
-  Serial1.print(config.gy_offset);
-  Serial1.print(F(","));
-  Serial1.print(config.gz_offset);
-  Serial1.print(F(","));
-  Serial1.print(config.KpX);
-  Serial1.print(F(","));
-  Serial1.print(config.KiX);
-  Serial1.print(F(","));
-  Serial1.print(config.KdX);
-  Serial1.print(F(","));
-  Serial1.print(config.KpY);
-  Serial1.print(F(","));
-  Serial1.print(config.KiY);
-  Serial1.print(F(","));
-  Serial1.print(config.KdY);
-  Serial1.print(F(","));
-  Serial1.print(config.ServoXMin);
-  Serial1.print(F(","));
-  Serial1.print(config.ServoXMax);
-  Serial1.print(F(","));
-  Serial1.print(config.ServoYMin);
-  Serial1.print(F(","));
-  Serial1.print(config.ServoYMax);
-  Serial1.print(F(","));
-  Serial1.print(config.connectionSpeed);
-  Serial1.print(F(","));
-  Serial1.print(config.altimeterResolution);
-  Serial1.print(F(","));
-  Serial1.print(config.eepromSize);
-  Serial1.print(F(","));
-  //alti major version
-  Serial1.print(MAJOR_VERSION);
-  //alti minor version
-  Serial1.print(F(","));
-  Serial1.print(MINOR_VERSION);
-  Serial1.print(F(","));
-  Serial1.print(config.unit);
-  Serial1.print(F(","));
-  Serial1.print(config.endRecordAltitude);
-  Serial1.print(F(","));
-  Serial1.print(config.beepingFrequency);
-  Serial1.print(F(","));
-  Serial1.print(config.liftOffDetect);
-  Serial1.print(F(","));
-  Serial1.print(config.gyroRange);
-  Serial1.print(F(","));
-  Serial1.print(config.acceleroRange);
-  Serial1.print(F(";\n"));
-  
-}
-*/
 void SendAltiConfig() {
   bool ret = readAltiConfig();
   char myconfig [300] = "";

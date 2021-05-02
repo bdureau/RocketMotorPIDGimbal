@@ -32,7 +32,7 @@ void defaultConfig()
   config.gyroRange=0;
   config.acceleroRange=0; 
   config.cksum=CheckSumConf(config);
-  //config.cksum=0xBA; 
+
 }
 
 
@@ -179,9 +179,7 @@ bool  writeAltiConfig( char *p ) {
     i++;
 
   }
-//msg[i-1]='\0';
-//Serial1.println(msg);
-//Serial1.println(strChk);
+
   //we have a partial config
   if (i<25)
     return false;
