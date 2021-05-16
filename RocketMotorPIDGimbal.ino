@@ -5,7 +5,7 @@
                 Angle changes can be monitored using a USB cable or a bluetooth interface
                 Inspired by various camera gimbal projects
    Author: Boris du Reau
-   Date: June 2018-2020
+   Date: June 2018-2021
    Sensor used is an MPU6050 board
 
    You can use an Arduino Uno/Nano or stm32F103C board
@@ -25,12 +25,12 @@
 
   This can be configured using the Gimbale Android application
   which is also hosted on Github
-Version 1.0: 
-Can log the data from all sensors on the eeprom and comunicate with an Android device 
-via the serial port or a bluetooth module.  
-Version 1.1
-Configure the accelero and gyro range
-Fixes, added checksum
+  Version 1.0:
+  Can log the data from all sensors on the eeprom and comunicate with an Android device
+  via the serial port or a bluetooth module.
+  Version 1.1
+  Configure the accelero and gyro range
+  Fixes, added checksum
 */
 
 
@@ -47,11 +47,14 @@ int currentFileNbr = 0;
 // EEPROM start adress for the flights. Anything before that is the flight index
 long currentMemaddress = 200;
 boolean liftOff = false;
-boolean landed = true;
+//boolean landed = true;
+boolean rocketLanded = false;
+boolean rocketApogee = false;
 //ground level altitude
 long initialAltitude;
 long liftoffAltitude = 20;
 long lastAltitude;
+long apogeeAltitude;
 //current altitude
 long currAltitude;
 bool canRecord;
@@ -61,10 +64,13 @@ unsigned long initialTime = 0;
 unsigned long prevTime = 0;
 unsigned long diffTime;
 unsigned long currentTime = 0;
+//nbr of measures to do so that we are sure that apogee has been reached
+unsigned long measures = 5;
+
 /*
- * ReadAltitude()
- * Read altitude and filter any nose with a Kalman filter
- */
+   ReadAltitude()
+   Read altitude and filter any nose with a Kalman filter
+*/
 double ReadAltitude()
 {
   return KalmanCalc(bmp.readAltitude());
@@ -102,7 +108,7 @@ void setup()
   ServoX.write(90);
   ServoY.write(90);
   delay(500);
- 
+
   Wire.begin();
   //default values
   //defaultConfig();
@@ -115,15 +121,15 @@ void setup()
   {
     //default values
     defaultConfig();
-/*#ifdef SERIAL_DEBUG
-    Serial1.println(F("Config invalid"));
-    Serial1.println("ax_offset =" + config.ax_offset);
-    Serial1.println("ay_offset =" + config.ay_offset);
-    Serial1.println("az_offset =" + config.az_offset);
-    Serial1.println("gx_offset =" + config.gx_offset);
-    Serial1.println("gy_offset =" + config.gy_offset);
-    Serial1.println("gz_offset =" + config.gz_offset);
-#endif*/
+    /*#ifdef SERIAL_DEBUG
+        Serial1.println(F("Config invalid"));
+        Serial1.println("ax_offset =" + config.ax_offset);
+        Serial1.println("ay_offset =" + config.ay_offset);
+        Serial1.println("az_offset =" + config.az_offset);
+        Serial1.println("gx_offset =" + config.gx_offset);
+        Serial1.println("gy_offset =" + config.gy_offset);
+        Serial1.println("gz_offset =" + config.gz_offset);
+      #endif*/
     //delay(1000);
     //calibrate();
     config.ax_offset = ax_offset;
@@ -157,8 +163,8 @@ void setup()
   // configure LED for output
   pinMode(LED_PIN, OUTPUT);
   pinMode(INTERRUPT_PIN, INPUT);
-  
-  
+
+
 
   // INPUT CALIBRATED OFFSETS HERE; SPECIFIC FOR EACH UNIT AND EACH MOUNTING CONFIGURATION!!!!
   // use the calibrate function for yours
@@ -218,13 +224,13 @@ void initialize() {
   // MPU6050_GYRO_FS_500
   // MPU6050_GYRO_FS_1000
   // MPU6050_GYRO_FS_2000
-  
+
 #ifdef SERIAL_DEBUG
   Serial1.println(F("Initializing MPU 6050 device..."));
 #endif
   mpu.setClockSource(MPU6050_CLOCK_PLL_XGYRO);
   //mpu.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
- // mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
+  // mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
   mpu.setFullScaleGyroRange(config.gyroRange);
   mpu.setFullScaleAccelRange(config.acceleroRange);
   mpu.setSleepEnabled(false); // thanks to Jack Elston for pointing this one out!
@@ -233,7 +239,7 @@ void initialize() {
 #ifdef SERIAL_DEBUG
   Serial1.println(F("Initializing DMP"));
 #endif
-  mpu.initialize(); //added 
+  mpu.initialize(); //added
   devStatus = mpu.dmpInitialize();
   mpu.setXAccelOffset(ax_offset);
   mpu.setYAccelOffset(ay_offset);
@@ -257,7 +263,7 @@ void initialize() {
     Serial1.println(F("Enabling DMP"));
 #endif
     mpu.setDMPEnabled(true);
-attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
+    attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
     mpuIntStatus = mpu.getIntStatus();
     dmpReady = true;
     // get expected DMP packet size for later comparison
@@ -274,7 +280,7 @@ attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
   }
 }
 
- 
+
 
 /*
 
@@ -289,7 +295,7 @@ void loop(void)
 void Mainloop(void)
 {
   long startTime = millis();
-  
+
   //read current altitude
   currAltitude = (ReadAltitude() - initialAltitude);
   bool lift = false;
@@ -305,6 +311,8 @@ void Mainloop(void)
   if ((lift && !liftOff) || (recording && !liftOff))
   {
     liftOff = true;
+    rocketLanded = false;
+    rocketApogee = false;
     if (recording)
       rec = true;
     // save the time
@@ -358,6 +366,25 @@ void Mainloop(void)
     }
   }
 
+  //detect apogee
+  if (liftOff) {
+    if (currAltitude < lastAltitude  )
+    {
+      measures = measures - 1;
+      if (measures == 0)
+      {
+        apogeeAltitude = currAltitude;
+        rocketApogee = true;
+      }
+    }
+    else
+    {
+      lastAltitude = currAltitude;
+      //number of measures to do to detect Apogee
+      measures = 5; //= config.nbrOfMeasuresForApogee;
+    }
+  }
+  
   if (((canRecord && currAltitude < 10) && liftOff && !recording && !rec) || (!recording && rec))
   {
     liftOff = false;
@@ -366,13 +393,17 @@ void Mainloop(void)
     //store start and end address
     logger.setFlightEndAddress (currentFileNbr, currentMemaddress - 1);
     logger.writeFlightList();
-   
   }
 
- 
-/////////
+  if ((currAltitude < 10) && rocketApogee && !recording && !rec) {
+    //landed
+    rocketLanded = true;
+    //SendTelemetry(q1, 200);
+  }
 
- // wait for MPU interrupt or extra packet(s) available
+  /////////
+
+  // wait for MPU interrupt or extra packet(s) available
   while (!mpuInterrupt && fifoCount < packetSize) {
     if (mpuInterrupt && fifoCount < packetSize) {
       // try to get out of the infinite loop
@@ -392,9 +423,9 @@ void Mainloop(void)
     // reset so we can continue cleanly
     mpu.resetFIFO();
     fifoCount = mpu.getFIFOCount();
-    #ifdef SERIAL_DEBUG
+#ifdef SERIAL_DEBUG
     Serial1.println(F("FIFO overflow!"));
-    #endif
+#endif
     // otherwise, check for DMP data ready interrupt (this should happen frequently)
   } else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
     // wait for correct available data length, should be a VERY short wait
@@ -407,20 +438,20 @@ void Mainloop(void)
     // (this lets us immediately read more without waiting for an interrupt)
     fifoCount -= packetSize;
 
-  // display Euler angles in degrees
-  mpu.dmpGetQuaternion(&q, fifoBuffer);
-  //mpu.dmpGetAccel(&aa, fifoBuffer);
-  mpu.dmpGetGravity(&gravity, &q);
-  mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-  mpuPitch = ypr[PITCH] * 180 / M_PI;
-  mpuRoll = ypr[ROLL] * 180 / M_PI;
-  mpuYaw  = ypr[YAW] * 180 / M_PI;
-  
-  /*mpuRoll = -ypr[ROLL] * 180 / M_PI;
-    mpuYaw  = -ypr[YAW] * 180 / M_PI;*/
+    // display Euler angles in degrees
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    //mpu.dmpGetAccel(&aa, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+    mpuPitch = ypr[PITCH] * 180 / M_PI;
+    mpuRoll = ypr[ROLL] * 180 / M_PI;
+    mpuYaw  = ypr[YAW] * 180 / M_PI;
 
-  // flush buffer to prevent overflow
-  mpu.resetFIFO();
+    /*mpuRoll = -ypr[ROLL] * 180 / M_PI;
+      mpuYaw  = -ypr[YAW] * 180 / M_PI;*/
+
+    // flush buffer to prevent overflow
+    mpu.resetFIFO();
   }
   // blink LED to indicate activity
   blinkState = !blinkState;
@@ -439,32 +470,32 @@ void Mainloop(void)
 
   // if you do not want to use the PID
   /* ServoX.write(-mpuPitch + 90);
-   ServoY.write(mpuRoll + 90);*/
-   int SX = -mpuPitch + 180;
-   if (SX < 80) 
+    ServoY.write(mpuRoll + 90);*/
+  int SX = -mpuPitch + 180;
+  if (SX < 80)
     SX = 80;
-   if (SX > 100)
+  if (SX > 100)
     SX = 100;
-   int SY = mpuYaw + 90;
+  int SY = mpuYaw + 90;
 
-    if (SY < 80) 
+  if (SY < 80)
     SY = 80;
-   if (SY > 100)
+  if (SY > 100)
     SY = 100;
-    
-   ServoX.write(SX);
-   ServoY.write(SY);
-   /*delay(10);*/
-  
+
+  ServoX.write(SX);
+  ServoY.write(SY);
+  /*delay(10);*/
+
 
   float q1[4];
   //mpu.dmpGetQuaternion(&q, fifoBuffer);
-  
+
   q1[0] = q.w;
   q1[1] = q.x;
   q1[2] = q.y;
   q1[3] = q.z;
- 
+
   //serialPrintFloatArr(q1, 4);
   SendTelemetry(q1, 200);
   checkBatVoltage(BAT_MIN_VOLTAGE);
@@ -473,7 +504,7 @@ void Mainloop(void)
     delay(10);
 
   // flush buffer to prevent overflow
- mpu.resetFIFO();
+  mpu.resetFIFO();
 }
 
 
@@ -487,11 +518,11 @@ void MainMenu()
   char readVal = ' ';
   int i = 0;
 
-  char commandbuffer[1000]="";
+  char commandbuffer[1000] = "";
 
 
   while ( readVal != ';') {
-    if(mainLoopEnable)
+    if (mainLoopEnable)
       Mainloop();
     while (Serial1.available())
     {
@@ -510,8 +541,8 @@ void MainMenu()
   }
 
   interpretCommandBuffer(commandbuffer);
-for (int i=0; i< sizeof(commandbuffer); i++)
-  commandbuffer[i]='\0';
+  for (int i = 0; i < sizeof(commandbuffer); i++)
+    commandbuffer[i] = '\0';
 }
 /*
 
@@ -541,10 +572,11 @@ void interpretCommandBuffer(char *commandbuffer) {
 #ifdef SERIAL_DEBUG
     Serial1.println(F("Erase\n"));
 #endif
-    logger.clearFlightList();
-    logger.writeFlightList();
-    currentFileNbr = 0;
-    currentMemaddress = 201;
+    /*logger.clearFlightList();
+      logger.writeFlightList();
+      currentFileNbr = 0;
+      currentMemaddress = 201;*/
+    resetFlight();
   }
   //this will read one flight
   else if (commandbuffer[0] == 'r')
@@ -654,7 +686,7 @@ void interpretCommandBuffer(char *commandbuffer) {
       Serial1.print(F("$OK;\n"));
     else
       Serial1.print(F("$KO;\n"));
-      commandbuffer="";
+    commandbuffer = "";
   }
   //reset alti config
   else if (commandbuffer[0] == 'd')
@@ -723,8 +755,8 @@ void SendTelemetry(float * arr, int freq) {
   float temperature;
   long pressure;
 
-  char myTelemetry[300]="";
-  
+  char myTelemetry[300] = "";
+
   if (last_telem_time - millis() > freq)
     if (telemetryEnable) {
       currAltitude = ReadAltitude() - initialAltitude;
@@ -737,60 +769,60 @@ void SendTelemetry(float * arr, int freq) {
       char temp[10];
       sprintf(temp, "%l", mpu.getRotationX());
       //dtostrf(mpu.getRotationX(), 4, 2, temp);
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       strcat( myTelemetry, ",");
       //GyroY
       sprintf(temp, "%l", mpu.getRotationZ());
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       //dtostrf(mpu.getRotationZ(), 4, 2, temp);
       strcat( myTelemetry, ",");
       //GyroZ
       sprintf(temp, "%l", mpu.getRotationY());
       //dtostrf(mpu.getRotationY(), 4, 2, temp);
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       strcat( myTelemetry, ",");
       //AccelX
       sprintf(temp, "%l", mpu.getAccelerationX());
       //dtostrf(mpu.getAccelerationX(), 4, 2, temp);
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       strcat( myTelemetry, ",");
       //AccelY
       sprintf(temp, "%l", mpu.getAccelerationZ());
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       //dtostrf(mpu.getAccelerationZ(), 4, 2, temp);
       strcat( myTelemetry, ",");
       //AccelZ
       sprintf(temp, "%l", mpu.getAccelerationY());
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       //dtostrf(mpu.getAccelerationY(), 4, 2, temp);
       strcat( myTelemetry, ",");
       //OrientX
       sprintf(temp, "%l", (long)mpuYaw);
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       //dtostrf(mpuYaw, 4, 2, temp);
       strcat( myTelemetry, ",");
       //OrientY
       sprintf(temp, "%l", (long)mpuRoll);
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       //dtostrf(mpuRoll, 4, 2, temp);
       strcat( myTelemetry, ",");
       //OrientZ
       sprintf(temp, "%l", (long)mpuPitch);
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       //dtostrf(mpuPitch, 4, 2, temp);
       strcat( myTelemetry, ",");
       //tab 2
       //Altitude
-      sprintf(temp, "%i",(int) currAltitude);
-      strcat( myTelemetry , temp); 
-      strcat( myTelemetry, ","); 
+      sprintf(temp, "%i", (int) currAltitude);
+      strcat( myTelemetry , temp);
+      strcat( myTelemetry, ",");
       //temperature
-      sprintf(temp, "%i",(int) temperature);
-      strcat( myTelemetry , temp); 
+      sprintf(temp, "%i", (int) temperature);
+      strcat( myTelemetry , temp);
       strcat( myTelemetry, ",");
       //Pressure
       sprintf(temp, "%i", (int)pressure);
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       strcat( myTelemetry, ",");
       //Batt voltage
       pinMode(PB1, INPUT_ANALOG);
@@ -798,42 +830,69 @@ void SendTelemetry(float * arr, int freq) {
       float bat = VOLT_DIVIDER * ((float)(batVoltage * 3300) / (float)4096000);
       sprintf(temp, "%f", bat);
       dtostrf(bat, 4, 2, temp);
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       strcat( myTelemetry, ",");
       //tab3
       floatToByte(arr[0], temp);
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       strcat( myTelemetry, ",");
       floatToByte(arr[1], temp);
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       strcat( myTelemetry, ",");
       floatToByte(arr[2], temp);
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       strcat( myTelemetry, ",");
       floatToByte(arr[3], temp);
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       strcat( myTelemetry, ",");
-      
+
       sprintf(temp, "%i", (int)(100 * ((float)logger.getLastFlightEndAddress() / endAddress)));
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       strcat( myTelemetry, ",");
-  
+
       sprintf(temp, "%i", (int)correct);
-      strcat( myTelemetry , temp); 
+      strcat( myTelemetry , temp);
       strcat( myTelemetry, ",");
 
-      sprintf(temp, "%i",(int) ( -mpuPitch + 180));
-      strcat( myTelemetry , temp); 
+      sprintf(temp, "%i", (int) ( -mpuPitch + 180));
+      strcat( myTelemetry , temp);
       strcat( myTelemetry, ",");
 
-      sprintf(temp, "%i",(int) ( mpuYaw + 90));
-      strcat( myTelemetry , temp); 
+      sprintf(temp, "%i", (int) ( mpuYaw + 90));
+      strcat( myTelemetry , temp);
       strcat( myTelemetry, ",");
-      
+
+      //check liftoff
+      int li = 0;
+      if (liftOff)
+        li = 1;
+      sprintf(temp, "%i,", li);
+      strcat(myTelemetry, temp);
+
+      //check apogee
+      int ap = 0;
+      if (rocketApogee)
+        ap = 1;
+      sprintf(temp, "%i,", ap);
+      strcat(myTelemetry, temp);
+
+      sprintf(temp, "%i,", apogeeAltitude);
+      strcat(myTelemetry, temp);
+
+
+      int landed = 0;
+      if (rocketLanded)
+        landed = 1;
+      sprintf(temp, "%i,", landed);
+      strcat(myTelemetry, temp);
+
+      sprintf(temp, "%i,", currentTime);
+      strcat(myTelemetry, temp);
+
       unsigned int chk;
       chk = msgChk(myTelemetry, sizeof(myTelemetry));
       sprintf(temp, "%i", chk);
-      strcat(myTelemetry,temp);
+      strcat(myTelemetry, temp);
       strcat(myTelemetry, ";");
       Serial1.print("$");
       Serial1.println(myTelemetry);
@@ -978,7 +1037,7 @@ void SendAltiConfig() {
 
 */
 void calibrate() {
-  #ifdef SERIAL_DEBUG
+#ifdef SERIAL_DEBUG
   // start message
   Serial1.println("\nMPU6050 Calibration Sketch");
   //delay(1000);
@@ -986,7 +1045,7 @@ void calibrate() {
   //delay(1000);
   // verify connection
   Serial1.println(mpu.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
-  #endif
+#endif
   //delay(1000);
   // reset offsets
   mpu.setXAccelOffset(0);
@@ -998,18 +1057,18 @@ void calibrate() {
 
   while (1) {
     if (state == 0) {
-      #ifdef SERIAL_DEBUG
+#ifdef SERIAL_DEBUG
       Serial1.println("\nReading sensors for first time...");
-      #endif
+#endif
       meansensors();
       state++;
       delay(100);
     }
 
     if (state == 1) {
-      #ifdef SERIAL_DEBUG
+#ifdef SERIAL_DEBUG
       Serial1.println("\nCalculating offsets...");
-      #endif
+#endif
       calibration();
       state++;
       delay(100);
@@ -1017,7 +1076,7 @@ void calibrate() {
 
     if (state == 2) {
       meansensors();
-      #ifdef SERIAL_DEBUG
+#ifdef SERIAL_DEBUG
       Serial1.println("\nFINISHED!");
       Serial1.print("\nSensor readings with offsets:\t");
       Serial1.print(mean_ax);
@@ -1047,7 +1106,7 @@ void calibrate() {
       Serial1.println("Check that your sensor readings are close to 0 0 16384 0 0 0");
       Serial1.println("If calibration was succesful write down your offsets so you can set them in your projects using something similar to mpu.setXAccelOffset(youroffset)");
       //while (1);
-      #endif
+#endif
       break;
     }
   }
@@ -1086,7 +1145,7 @@ void meansensors() {
 }
 
 void calibration() {
-  int calibrationPass =0;
+  int calibrationPass = 0;
   /*ax_offset = -mean_ax / 8;
     ay_offset = -mean_ay / 8;
     az_offset = (16384 - mean_az) / 8;*/
@@ -1109,12 +1168,12 @@ void calibration() {
 
     meansensors();
     calibrationPass ++;
-    
+
     Serial1.print("$CAL_PASS ");
     Serial1.println(calibrationPass);
-    #ifdef SERIAL_DEBUG
+#ifdef SERIAL_DEBUG
     Serial1.println("...");
-    #endif
+#endif
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
     if (abs(mean_ax) <= acel_deadzone) ready++;
@@ -1154,9 +1213,9 @@ void checkBatVoltage(float minVolt) {
 
   pinMode(PB1, INPUT_ANALOG);
   int batVoltage = analogRead(PB1);
- 
+
   float bat = VOLT_DIVIDER * ((float)(batVoltage * 3300) / (float)4096000);
-  
+
   if (bat < minVolt) {
     for (int i = 0; i < 10; i++)
     {
@@ -1166,4 +1225,25 @@ void checkBatVoltage(float minVolt) {
     }
     delay(1000);
   }
+}
+
+/*
+
+   re-nitialise all flight related global variables
+
+*/
+void resetFlight() {
+  logger.readFlightList();
+  long lastFlightNbr = logger.getLastFlightNbr();
+  if (lastFlightNbr < 0)
+  {
+    currentFileNbr = 0;
+    currentMemaddress = 201;
+  }
+  else
+  {
+    currentMemaddress = logger.getFlightStop(lastFlightNbr) + 1;
+    currentFileNbr = lastFlightNbr + 1;
+  }
+  canRecord = logger.CanRecord();
 }
