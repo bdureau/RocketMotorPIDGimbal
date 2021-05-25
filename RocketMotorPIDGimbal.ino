@@ -572,10 +572,10 @@ void interpretCommandBuffer(char *commandbuffer) {
 #ifdef SERIAL_DEBUG
     Serial1.println(F("Erase\n"));
 #endif
-    /*logger.clearFlightList();
+    logger.clearFlightList();
       logger.writeFlightList();
       currentFileNbr = 0;
-      currentMemaddress = 201;*/
+      currentMemaddress = 201;
     resetFlight();
   }
   //this will read one flight
