@@ -355,6 +355,28 @@ boolean logger_I2C_eeprom::CanRecord()
   return true;
 }
 /*
+
+ eraseLastFlight()
+ 
+ */
+bool logger_I2C_eeprom::eraseLastFlight(){
+int i;
+  for (i = 0; i < 25; i++)
+  {
+    if (_FlightConfig[i].flight_start == 0)
+    {
+      if(i>0) {
+        _FlightConfig[i-1].flight_start = 0;
+        _FlightConfig[i-1].flight_stop = 0;
+        writeFlightList();
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/*
  * 
  * getLastFlightNbr()
  * Parse the flight index end check if the flight_start address is > 0

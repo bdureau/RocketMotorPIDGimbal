@@ -373,7 +373,8 @@ void Mainloop(void)
       measures = measures - 1;
       if (measures == 0)
       {
-        apogeeAltitude = currAltitude;
+        //apogeeAltitude = currAltitude;
+        apogeeAltitude = lastAltitude;
         rocketApogee = true;
       }
     }
@@ -384,7 +385,7 @@ void Mainloop(void)
       measures = 5; //= config.nbrOfMeasuresForApogee;
     }
   }
-  
+
   if (((canRecord && currAltitude < 10) && liftOff && !recording && !rec) || (!recording && rec))
   {
     liftOff = false;
@@ -497,6 +498,7 @@ void Mainloop(void)
   q1[3] = q.z;
 
   //serialPrintFloatArr(q1, 4);
+  currentTime = millis() - initialTime;
   SendTelemetry(q1, 200);
   checkBatVoltage(BAT_MIN_VOLTAGE);
 
@@ -535,6 +537,7 @@ void MainMenu()
       else
       {
         commandbuffer[i++] = '\0';
+        resetFlight();
         break;
       }
     }
@@ -573,9 +576,9 @@ void interpretCommandBuffer(char *commandbuffer) {
     Serial1.println(F("Erase\n"));
 #endif
     logger.clearFlightList();
-      logger.writeFlightList();
-      currentFileNbr = 0;
-      currentMemaddress = 201;
+    logger.writeFlightList();
+    currentFileNbr = 0;
+    currentMemaddress = 201;
     resetFlight();
   }
   //this will read one flight
@@ -734,6 +737,11 @@ void interpretCommandBuffer(char *commandbuffer) {
     }
     Serial1.print(F("$OK;\n"));
   }
+  //delete last curve
+  else if (commandbuffer[0] == 'x')
+  {
+    logger.eraseLastFlight();
+  }
   else
   {
     Serial1.println(F("Unknown command" ));
@@ -755,148 +763,153 @@ void SendTelemetry(float * arr, int freq) {
   float temperature;
   long pressure;
 
-  char myTelemetry[300] = "";
+  char myTelemetry[250] = "";
 
-  if (last_telem_time - millis() > freq)
-    if (telemetryEnable) {
-      currAltitude = ReadAltitude() - initialAltitude;
-      pressure = bmp.readPressure();
-      temperature = bmp.readTemperature();
-      last_telem_time = millis();
-      strcat( myTelemetry , "telemetry,RocketMotorGimbal,");
-      //tab 1
-      //GyroX
-      char temp[10];
-      sprintf(temp, "%l", mpu.getRotationX());
-      //dtostrf(mpu.getRotationX(), 4, 2, temp);
-      strcat( myTelemetry , temp);
-      strcat( myTelemetry, ",");
-      //GyroY
-      sprintf(temp, "%l", mpu.getRotationZ());
-      strcat( myTelemetry , temp);
-      //dtostrf(mpu.getRotationZ(), 4, 2, temp);
-      strcat( myTelemetry, ",");
-      //GyroZ
-      sprintf(temp, "%l", mpu.getRotationY());
-      //dtostrf(mpu.getRotationY(), 4, 2, temp);
-      strcat( myTelemetry , temp);
-      strcat( myTelemetry, ",");
-      //AccelX
-      sprintf(temp, "%l", mpu.getAccelerationX());
-      //dtostrf(mpu.getAccelerationX(), 4, 2, temp);
-      strcat( myTelemetry , temp);
-      strcat( myTelemetry, ",");
-      //AccelY
-      sprintf(temp, "%l", mpu.getAccelerationZ());
-      strcat( myTelemetry , temp);
-      //dtostrf(mpu.getAccelerationZ(), 4, 2, temp);
-      strcat( myTelemetry, ",");
-      //AccelZ
-      sprintf(temp, "%l", mpu.getAccelerationY());
-      strcat( myTelemetry , temp);
-      //dtostrf(mpu.getAccelerationY(), 4, 2, temp);
-      strcat( myTelemetry, ",");
-      //OrientX
-      sprintf(temp, "%l", (long)mpuYaw);
-      strcat( myTelemetry , temp);
-      //dtostrf(mpuYaw, 4, 2, temp);
-      strcat( myTelemetry, ",");
-      //OrientY
-      sprintf(temp, "%l", (long)mpuRoll);
-      strcat( myTelemetry , temp);
-      //dtostrf(mpuRoll, 4, 2, temp);
-      strcat( myTelemetry, ",");
-      //OrientZ
-      sprintf(temp, "%l", (long)mpuPitch);
-      strcat( myTelemetry , temp);
-      //dtostrf(mpuPitch, 4, 2, temp);
-      strcat( myTelemetry, ",");
-      //tab 2
-      //Altitude
-      sprintf(temp, "%i", (int) currAltitude);
-      strcat( myTelemetry , temp);
-      strcat( myTelemetry, ",");
-      //temperature
-      sprintf(temp, "%i", (int) temperature);
-      strcat( myTelemetry , temp);
-      strcat( myTelemetry, ",");
-      //Pressure
-      sprintf(temp, "%i", (int)pressure);
-      strcat( myTelemetry , temp);
-      strcat( myTelemetry, ",");
-      //Batt voltage
-      pinMode(PB1, INPUT_ANALOG);
-      int batVoltage = analogRead(PB1);
-      float bat = VOLT_DIVIDER * ((float)(batVoltage * 3300) / (float)4096000);
-      sprintf(temp, "%f", bat);
-      dtostrf(bat, 4, 2, temp);
-      strcat( myTelemetry , temp);
-      strcat( myTelemetry, ",");
-      //tab3
-      floatToByte(arr[0], temp);
-      strcat( myTelemetry , temp);
-      strcat( myTelemetry, ",");
-      floatToByte(arr[1], temp);
-      strcat( myTelemetry , temp);
-      strcat( myTelemetry, ",");
-      floatToByte(arr[2], temp);
-      strcat( myTelemetry , temp);
-      strcat( myTelemetry, ",");
-      floatToByte(arr[3], temp);
-      strcat( myTelemetry , temp);
-      strcat( myTelemetry, ",");
+  if (telemetryEnable && (millis() - last_telem_time) > freq) {
+    //if (telemetryEnable) {
+    last_telem_time = millis();
+    currAltitude = ReadAltitude() - initialAltitude;
+    pressure = bmp.readPressure();
+    temperature = bmp.readTemperature();
 
-      sprintf(temp, "%i", (int)(100 * ((float)logger.getLastFlightEndAddress() / endAddress)));
-      strcat( myTelemetry , temp);
-      strcat( myTelemetry, ",");
+    strcat( myTelemetry , "telemetry,RocketMotorGimbal,");
+    //tab 1
+    //GyroX
+    char temp[10];
+    sprintf(temp, "%l", mpu.getRotationX());
+    //dtostrf(mpu.getRotationX(), 4, 2, temp);
+    strcat( myTelemetry , temp);
+    strcat( myTelemetry, ",");
+    //GyroY
+    sprintf(temp, "%l", mpu.getRotationZ());
+    strcat( myTelemetry , temp);
+    //dtostrf(mpu.getRotationZ(), 4, 2, temp);
+    strcat( myTelemetry, ",");
+    //GyroZ
+    sprintf(temp, "%l", mpu.getRotationY());
+    //dtostrf(mpu.getRotationY(), 4, 2, temp);
+    strcat( myTelemetry , temp);
+    strcat( myTelemetry, ",");
+    //AccelX
+    sprintf(temp, "%l", mpu.getAccelerationX());
+    //dtostrf(mpu.getAccelerationX(), 4, 2, temp);
+    strcat( myTelemetry , temp);
+    strcat( myTelemetry, ",");
+    //AccelY
+    sprintf(temp, "%l", mpu.getAccelerationZ());
+    strcat( myTelemetry , temp);
+    //dtostrf(mpu.getAccelerationZ(), 4, 2, temp);
+    strcat( myTelemetry, ",");
+    //AccelZ
+    sprintf(temp, "%l", mpu.getAccelerationY());
+    strcat( myTelemetry , temp);
+    //dtostrf(mpu.getAccelerationY(), 4, 2, temp);
+    strcat( myTelemetry, ",");
+    //OrientX
+    sprintf(temp, "%l", (long)mpuYaw);
+    strcat( myTelemetry , temp);
+    //dtostrf(mpuYaw, 4, 2, temp);
+    strcat( myTelemetry, ",");
+    //OrientY
+    sprintf(temp, "%l", (long)mpuRoll);
+    strcat( myTelemetry , temp);
+    //dtostrf(mpuRoll, 4, 2, temp);
+    strcat( myTelemetry, ",");
+    //OrientZ
+    sprintf(temp, "%l", (long)mpuPitch);
+    strcat( myTelemetry , temp);
+    //dtostrf(mpuPitch, 4, 2, temp);
+    strcat( myTelemetry, ",");
+    //tab 2
+    //Altitude
+    sprintf(temp, "%i", (int) currAltitude);
+    strcat( myTelemetry , temp);
+    strcat( myTelemetry, ",");
+    //temperature
+    sprintf(temp, "%i", (int) temperature);
+    strcat( myTelemetry , temp);
+    strcat( myTelemetry, ",");
+    //Pressure
+    sprintf(temp, "%i", (int)pressure);
+    strcat( myTelemetry , temp);
+    strcat( myTelemetry, ",");
+    //Batt voltage
+    pinMode(PB1, INPUT_ANALOG);
+    int batVoltage = analogRead(PB1);
+    float bat = VOLT_DIVIDER * ((float)(batVoltage * 3300) / (float)4096000);
+    sprintf(temp, "%f", bat);
+    dtostrf(bat, 4, 2, temp);
+    strcat( myTelemetry , temp);
+    strcat( myTelemetry, ",");
+    //tab3
+    floatToByte(arr[0], temp);
+    strcat( myTelemetry , temp);
+    strcat( myTelemetry, ",");
+    floatToByte(arr[1], temp);
+    strcat( myTelemetry , temp);
+    strcat( myTelemetry, ",");
+    floatToByte(arr[2], temp);
+    strcat( myTelemetry , temp);
+    strcat( myTelemetry, ",");
+    floatToByte(arr[3], temp);
+    strcat( myTelemetry , temp);
+    strcat( myTelemetry, ",");
 
-      sprintf(temp, "%i", (int)correct);
-      strcat( myTelemetry , temp);
-      strcat( myTelemetry, ",");
-
-      sprintf(temp, "%i", (int) ( -mpuPitch + 180));
-      strcat( myTelemetry , temp);
-      strcat( myTelemetry, ",");
-
-      sprintf(temp, "%i", (int) ( mpuYaw + 90));
-      strcat( myTelemetry , temp);
-      strcat( myTelemetry, ",");
-
-      //check liftoff
-      int li = 0;
-      if (liftOff)
-        li = 1;
-      sprintf(temp, "%i,", li);
-      strcat(myTelemetry, temp);
-
-      //check apogee
-      int ap = 0;
-      if (rocketApogee)
-        ap = 1;
-      sprintf(temp, "%i,", ap);
-      strcat(myTelemetry, temp);
-
-      sprintf(temp, "%i,", apogeeAltitude);
-      strcat(myTelemetry, temp);
+    sprintf(temp, "%i", (int)(100 * ((float)logger.getLastFlightEndAddress() / endAddress)));
+    strcat( myTelemetry , temp);
+    strcat( myTelemetry, ",");
 
 
-      int landed = 0;
-      if (rocketLanded)
-        landed = 1;
-      sprintf(temp, "%i,", landed);
-      strcat(myTelemetry, temp);
+    sprintf(temp, "%i", (int)correct);
+    strcat( myTelemetry , temp);
+    strcat( myTelemetry, ",");
 
-      sprintf(temp, "%i,", currentTime);
-      strcat(myTelemetry, temp);
+    sprintf(temp, "%i", (int) ( -mpuPitch + 180));
+    strcat( myTelemetry , temp);
+    strcat( myTelemetry, ",");
 
-      unsigned int chk;
-      chk = msgChk(myTelemetry, sizeof(myTelemetry));
-      sprintf(temp, "%i", chk);
-      strcat(myTelemetry, temp);
-      strcat(myTelemetry, ";");
-      Serial1.print("$");
-      Serial1.println(myTelemetry);
-    }
+    sprintf(temp, "%i", (int) ( mpuYaw + 90));
+    strcat( myTelemetry , temp);
+    strcat( myTelemetry, ",");
+
+    //check liftoff
+    int li = 0;
+    if (liftOff)
+      li = 1;
+    sprintf(temp, "%i,", li);
+    strcat(myTelemetry, temp);
+
+    //check apogee
+    int ap = 0;
+    if (rocketApogee)
+      ap = 1;
+    sprintf(temp, "%i,", ap);
+    strcat(myTelemetry, temp);
+
+    sprintf(temp, "%i,", apogeeAltitude);
+    strcat(myTelemetry, temp);
+
+
+    int landed = 0;
+    if (rocketLanded)
+      landed = 1;
+    sprintf(temp, "%i,", landed);
+    strcat(myTelemetry, temp);
+
+    sprintf(temp, "%i,", currentTime);
+    strcat(myTelemetry, temp);
+
+    sprintf(temp, "%i,", logger.getLastFlightNbr() + 1 );
+    strcat(myTelemetry, temp);
+
+    unsigned int chk;
+    chk = msgChk(myTelemetry, sizeof(myTelemetry));
+    sprintf(temp, "%i", chk);
+    strcat(myTelemetry, temp);
+    strcat(myTelemetry, ";");
+    Serial1.print("$");
+    Serial1.println(myTelemetry);
+  }
 }
 
 /*
@@ -1233,6 +1246,10 @@ void checkBatVoltage(float minVolt) {
 
 */
 void resetFlight() {
+  liftOff = false;
+  apogeeAltitude = 0;
+  rocketLanded = false;
+  rocketApogee = false;
   logger.readFlightList();
   long lastFlightNbr = logger.getLastFlightNbr();
   if (lastFlightNbr < 0)
