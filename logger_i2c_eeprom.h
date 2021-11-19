@@ -38,8 +38,8 @@ struct FlightDataStruct {
 };
 
 struct FlightConfigStruct {
-  long flight_start;    
-  long flight_stop; 
+  long flight_start;
+  long flight_stop;
 };
 
 #define LOGGER_I2C_EEPROM_VERSION "1.0.0"
@@ -49,12 +49,12 @@ struct FlightConfigStruct {
 #define FLIGHT_DATA_START 200
 class logger_I2C_eeprom
 {
-public:
+  public:
     /**
-     * Initializes the logger.
-     */
+       Initializes the logger.
+    */
     logger_I2C_eeprom(uint8_t deviceAddress);
-    
+
     void begin();
     void clearFlightList();
     long readFlight(long eeaddress);
@@ -71,7 +71,7 @@ public:
     void setFlightPressureData( long pressure);
     void setFlightTemperatureData( long temperature);
     void setFlightCorrection( long OutputX, long OutputY);
-    void setAcceleration(long X,long Y,long Z);
+    void setAcceleration(long X, long Y, long Z);
     void getFlightCorrection(long *cor);
     //void setFlightRocketPos(char *w, char *x, char *y, char *z);
     void setFlightRocketPos(long w, long x, long y, long z );
@@ -85,9 +85,9 @@ public:
     long getSizeOfFlightData();
     bool eraseLastFlight();
     long getLastFlightEndAddress();
-    
-private:
-    
+
+  private:
+
     FlightConfigStruct _FlightConfig[25];
     FlightDataStruct _FlightData;
     uint8_t _deviceAddress;
