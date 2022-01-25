@@ -11,7 +11,8 @@
 #include <PID_v1.h> // Arduino PID library
 #include <Wire.h>
 //#include <Adafruit_BMP085.h>
-#include <BMP085_stm32.h>
+//#include <BMP085_stm32.h>
+#include "Bear_BMP085.h"
 
 BMP085 bmp;
 bool blinkState = true;
