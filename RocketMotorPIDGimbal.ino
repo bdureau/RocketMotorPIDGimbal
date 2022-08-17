@@ -751,6 +751,19 @@ void interpretCommandBuffer(char *commandbuffer) {
   else if (commandbuffer[0] == 'x')
   {
     logger.eraseLastFlight();
+    logger.readFlightList();
+    long lastFlightNbr = logger.getLastFlightNbr();
+    if (lastFlightNbr < 0)
+    {
+      currentFileNbr = 0;
+      currentMemaddress = 201;
+    }
+    else
+    {
+      currentMemaddress = logger.getFlightStop(lastFlightNbr) + 1;
+      currentFileNbr = lastFlightNbr + 1;
+    }
+    canRecord = logger.CanRecord();
   }
   //telemetry on/off
   else if (commandbuffer[0] == 'y')
