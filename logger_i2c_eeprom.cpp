@@ -281,7 +281,7 @@ void logger_I2C_eeprom::printFlightData(int flightNbr)
     {
       i = readFlight(i) + 1;
       char flightData[150] = "";
-      char temp[9] = "";
+      char temp[20] = "";
       currentTime = currentTime + getFlightTimeData();
       strcat(flightData, "data,");
       sprintf(temp, "%i,", flightNbr );
@@ -324,6 +324,17 @@ void logger_I2C_eeprom::printFlightData(int flightNbr)
       strcat(flightData, ";\n");
       Serial1.print("$");
       Serial1.print(flightData);
+      
+      //This will slow down the data
+      // this is for telemetry modules without enought buffer
+      if (config.telemetryType == 0) 
+        delay(0);
+      else if (config.telemetryType == 1)  
+        delay(20); 
+      else if (config.telemetryType == 2)
+        delay(50);
+      else if (config.telemetryType == 3)
+        delay(100);
     }
   }
 }

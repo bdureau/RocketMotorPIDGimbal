@@ -10,11 +10,28 @@
 #include <MPU6050_6Axis_MotionApps20.h> // Gyroscope and axcelerometer libraries
 #include <PID_v1.h> // Arduino PID library
 #include <Wire.h>
-//#include <Adafruit_BMP085.h>
-//#include <BMP085_stm32.h>
+
 #include "Bear_BMP085.h"
 
+// choose the pressure sensor that you are using
+// for most board the pressure sensor is either BMP085 or BMP180 
+// note that BMP085 and 180 are compatible no need to use the new BMP180 library
+//#define BMP085_180
+
+// if you have a custom board using a BMP280 pressure sensor 
+#define BMP280
+
+#ifdef BMP085_180
+#include "Bear_BMP085.h"
 BMP085 bmp;
+#endif
+
+#ifdef BMP280
+#include <Adafruit_BMP280.h>
+#define P0 1013.25
+Adafruit_BMP280 bmp;
+#endif
+
 bool blinkState = true;
 bool telemetryEnable = false;
 bool mainLoopEnable = true;

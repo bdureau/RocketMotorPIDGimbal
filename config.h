@@ -2,12 +2,12 @@
 #define _CONFIG_H
 
 #define MAJOR_VERSION 1
-#define MINOR_VERSION 2
+#define MINOR_VERSION 3
 
 #define BOARD_FIRMWARE "RocketMotorGimbal"
 #define CONFIG_START 32
 extern const int pinSpeaker;
-#define BAT_MIN_VOLTAGE 7.0
+#define BAT_MIN_VOLTAGE 6.5
 //Voltage divider
 #define R1 4.7
 #define R2 10
@@ -50,6 +50,7 @@ struct ConfigStruct {
   int acceleroRange;
   int recordingTimeout;
   int batteryType;
+  int telemetryType;
   int cksum;
 };
 extern ConfigStruct config;

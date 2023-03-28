@@ -5,7 +5,7 @@
                 Angle changes can be monitored using a USB cable or a bluetooth interface
                 Inspired by various camera gimbal projects
    Author: Boris du Reau
-   Date: June 2018-2021
+   Date: June 2018-2023
    Sensor used is an MPU6050 board
 
    You can use an Arduino Uno/Nano or stm32F103C board
@@ -31,6 +31,11 @@
   Version 1.1
   Configure the accelero and gyro range
   Fixes, added checksum
+  Version 1.2
+  Fixes
+  Version 1.3
+  Fixes adding additionnal param for the telemetry module
+   Adding the BMP280 sensor
 */
 
 
@@ -67,15 +72,54 @@ unsigned long currentTime = 0;
 //nbr of measures to do so that we are sure that apogee has been reached
 unsigned long measures = 5;
 long recordingTimeOut = 20000;
+long lastBattWarning = 0;
 
 /*
    ReadAltitude()
    Read altitude and filter any nose with a Kalman filter
 */
+/*double ReadAltitude()
+{
+  return KalmanCalc(bmp.readAltitude());
+}*/
+
+#ifdef BMP085_180
+/*
+   ReadAltitude()
+   Read Altitude function for a BMP85 or 180 Bosch sensor
+
+*/
 double ReadAltitude()
 {
   return KalmanCalc(bmp.readAltitude());
+  //return bmp.readAltitude();
 }
+#endif
+
+#ifdef BMP280
+/*
+
+   Read Altitude function for a BMP280 Bosch sensor
+
+
+*/
+double ReadAltitude()
+{
+  /*double T, P, A;
+  char result = bmp.startMeasurment();
+  if (result != 0) {
+    delay(result);
+    result = bmp.getTemperatureAndPressure(T, P);
+    A = KalmanCalc(bmp.altitude(P, P0));
+  }
+  return A;*/
+  return KalmanCalc(bmp.readAltitude(1013.25));
+  
+  
+  
+}
+#endif
+
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
@@ -312,6 +356,10 @@ void Mainloop(void)
 
   if ((lift && !liftOff) || (recording && !liftOff))
   {
+
+    //#ifdef SERIAL_DEBUG
+    //Serial1.println(F("start recording"));
+//#endif
     liftOff = true;
     rocketLanded = false;
     rocketApogee = false;
@@ -331,6 +379,9 @@ void Mainloop(void)
       }
       else
       {
+        //#ifdef SERIAL_DEBUG
+   // Serial1.println(F("currentMemaddress"));
+//#endif
         currentMemaddress = logger.getFlightStop(lastFlightNbr) + 1;
         currentFileNbr = lastFlightNbr + 1;
       }
@@ -341,11 +392,14 @@ void Mainloop(void)
   }
   if (canRecord && liftOff)
   {
+    //#ifdef SERIAL_DEBUG
+    //Serial1.println(F("canRecord && liftOff"));
+//#endif
     currentTime = millis() - initialTime;
     diffTime = currentTime - prevTime;
     prevTime = currentTime;
     logger.setFlightTimeData( diffTime);
-    logger.setFlightAltitudeData(currAltitude);
+    logger.setFlightAltitudeData((long) currAltitude);
     logger.setFlightTemperatureData((long) bmp.readTemperature());
     logger.setFlightPressureData((long) bmp.readPressure());
 
@@ -363,6 +417,11 @@ void Mainloop(void)
       logger.setFlightEndAddress (currentFileNbr, currentMemaddress - 1);
       canRecord = false;
     } else {
+       //#ifdef SERIAL_DEBUG
+    //Serial1.println(F("writting"));
+    delay(10);
+    //Serial1.println(currentMemaddress);
+//#endif
       currentMemaddress = logger.writeFastFlight(currentMemaddress);
       currentMemaddress++;
     }
@@ -390,8 +449,11 @@ void Mainloop(void)
 
   // if (((canRecord && currAltitude < 10) && liftOff && !recording && !rec) || (!recording && rec))
   if (((canRecord && currAltitude < 10) && liftOff && !recording && !rec) || (!recording && rec) || (canRecord && liftOff && !recording && !rec && (millis() - initialTime) > recordingTimeOut))
-
   {
+    #ifdef SERIAL_DEBUG
+    Serial1.println(F("finishing"));
+    Serial1.println(currentFileNbr);
+    #endif
     liftOff = false;
     rec = false;
     //end loging
@@ -724,11 +786,11 @@ void interpretCommandBuffer(char *commandbuffer) {
   //write altimeter config
   else if (commandbuffer[0] == 's')
   {
-   /* if (writeAltiConfig(commandbuffer))
-      Serial1.print(F("$OK;\n"));
-    else
-      Serial1.print(F("$KO;\n"));
-    commandbuffer = "";*/
+    /* if (writeAltiConfig(commandbuffer))
+       Serial1.print(F("$OK;\n"));
+      else
+       Serial1.print(F("$KO;\n"));
+      commandbuffer = "";*/
   }
   //start or stop recording
   else if (commandbuffer[0] == 'w')
@@ -744,6 +806,9 @@ void interpretCommandBuffer(char *commandbuffer) {
       Serial1.print(F("Stop Recording\n"));
 #endif
       recording = false;
+      //store start and end address
+    //logger.setFlightEndAddress (currentFileNbr, currentMemaddress - 1);
+    //logger.writeFlightList();
     }
     Serial1.print(F("$OK;\n"));
   }
@@ -803,7 +868,7 @@ void SendTelemetry(float * arr, int freq) {
   float temperature;
   long pressure;
 
-  char myTelemetry[250] = "";
+  char myTelemetry[220] = "";
 
   if (telemetryEnable && (millis() - last_telem_time) > freq) {
     //if (telemetryEnable) {
@@ -817,48 +882,48 @@ void SendTelemetry(float * arr, int freq) {
     strcat( myTelemetry , ",");
     //tab 1
     //GyroX
-    char temp[10];
-    sprintf(temp, "%l", mpu.getRotationX());
+    char temp[15];
+    sprintf(temp, "%i", mpu.getRotationX());
     //dtostrf(mpu.getRotationX(), 4, 2, temp);
     strcat( myTelemetry , temp);
     strcat( myTelemetry, ",");
     //GyroY
-    sprintf(temp, "%l", mpu.getRotationZ());
+    sprintf(temp, "%i", mpu.getRotationZ());
     strcat( myTelemetry , temp);
     //dtostrf(mpu.getRotationZ(), 4, 2, temp);
     strcat( myTelemetry, ",");
     //GyroZ
-    sprintf(temp, "%l", mpu.getRotationY());
+    sprintf(temp, "%i", mpu.getRotationY());
     //dtostrf(mpu.getRotationY(), 4, 2, temp);
     strcat( myTelemetry , temp);
     strcat( myTelemetry, ",");
     //AccelX
-    sprintf(temp, "%l", mpu.getAccelerationX());
+    sprintf(temp, "%i", mpu.getAccelerationX());
     //dtostrf(mpu.getAccelerationX(), 4, 2, temp);
     strcat( myTelemetry , temp);
     strcat( myTelemetry, ",");
     //AccelY
-    sprintf(temp, "%l", mpu.getAccelerationZ());
+    sprintf(temp, "%i", mpu.getAccelerationZ());
     strcat( myTelemetry , temp);
     //dtostrf(mpu.getAccelerationZ(), 4, 2, temp);
     strcat( myTelemetry, ",");
     //AccelZ
-    sprintf(temp, "%l", mpu.getAccelerationY());
+    sprintf(temp, "%i", mpu.getAccelerationY());
     strcat( myTelemetry , temp);
     //dtostrf(mpu.getAccelerationY(), 4, 2, temp);
     strcat( myTelemetry, ",");
     //OrientX
-    sprintf(temp, "%l", (long)mpuYaw);
+    sprintf(temp, "%i", (long)mpuYaw);
     strcat( myTelemetry , temp);
     //dtostrf(mpuYaw, 4, 2, temp);
     strcat( myTelemetry, ",");
     //OrientY
-    sprintf(temp, "%l", (long)mpuRoll);
+    sprintf(temp, "%i", (long)mpuRoll);
     strcat( myTelemetry , temp);
     //dtostrf(mpuRoll, 4, 2, temp);
     strcat( myTelemetry, ",");
     //OrientZ
-    sprintf(temp, "%l", (long)mpuPitch);
+    sprintf(temp, "%i", (long)mpuPitch);
     strcat( myTelemetry , temp);
     //dtostrf(mpuPitch, 4, 2, temp);
     strcat( myTelemetry, ",");
@@ -897,7 +962,13 @@ void SendTelemetry(float * arr, int freq) {
     strcat( myTelemetry , temp);
     strcat( myTelemetry, ",");
 
-    sprintf(temp, "%i", (int)(100 * ((float)logger.getLastFlightEndAddress() / endAddress)));
+    //sprintf(temp, "%i", (int)(100 * ((float)logger.getLastFlightEndAddress() / endAddress)));
+    if (!recording) {
+      sprintf(temp, "%i", (int)(100 * ((float)logger.getLastFlightEndAddress() / endAddress)) );
+    }
+    else {
+      sprintf(temp, "%i", (int)(100 * ((float) currentMemaddress / endAddress)) );
+    }
     strcat( myTelemetry , temp);
     strcat( myTelemetry, ",");
 
@@ -1082,6 +1153,10 @@ void SendAltiConfig() {
   strcat( myconfig, ",");
 
   sprintf(temp, "%i", config.batteryType);
+  strcat( myconfig, temp);
+  strcat( myconfig, ",");
+
+  sprintf(temp, "%i", config.telemetryType);
   strcat( myconfig, temp);
   strcat( myconfig, ",");
 
@@ -1275,20 +1350,23 @@ void calibration() {
    damaged by over discharging
 */
 void checkBatVoltage(float minVolt) {
+  if ((millis() - lastBattWarning) > 10000) {
+    lastBattWarning = millis();
+    pinMode(PB1, INPUT_ANALOG);
+    int batVoltage = analogRead(PB1);
 
-  pinMode(PB1, INPUT_ANALOG);
-  int batVoltage = analogRead(PB1);
+    float bat = VOLT_DIVIDER * ((float)(batVoltage * 3300) / (float)4096000);
 
-  float bat = VOLT_DIVIDER * ((float)(batVoltage * 3300) / (float)4096000);
-
-  if (bat < minVolt) {
-    for (int i = 0; i < 10; i++)
-    {
-      tone(pinSpeaker, 1600, 1000);
-      delay(50);
-      noTone(pinSpeaker);
+    if (bat < minVolt) {
+      //Serial1.println(bat);
+      for (int i = 0; i < 10; i++)
+      {
+        tone(pinSpeaker, 1600, 1000);
+        delay(50);
+        noTone(pinSpeaker);
+      }
+      delay(1000);
     }
-    delay(1000);
   }
 }
 

@@ -33,6 +33,7 @@ void defaultConfig()
   config.acceleroRange = 0;
   config.recordingTimeout = 120;
   config.batteryType = 0; // 0= Unknown, 1= "2S (7.4 Volts)", 2 = "9 Volts",3 = "3S (11.1 Volts)
+  config.telemetryType = 0;
   config.cksum = CheckSumConf(config);
 }
 
@@ -316,7 +317,10 @@ bool writeAltiConfigV2( char *p ) {
         break;
       case 27:
         config.batteryType = (int) commandVal;
-        break;           
+        break; 
+      case 28:  
+        config.telemetryType = (int) commandVal;     
+        break;      
     }
 
   // add checksum
