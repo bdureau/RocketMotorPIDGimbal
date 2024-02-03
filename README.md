@@ -1,4 +1,4 @@
-# RocketMotorPIDGimbal
+# RocketMotorPIDGimbal (firmware)
 This is yet again another attempt to fly a model rocket without fins using long burn motors. The following repository is the firmware for the board.
 <img src="/photos/motor_gimbal1.png" width="49%">
 
