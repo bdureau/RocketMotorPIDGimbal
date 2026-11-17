@@ -1,3 +1,17 @@
+/*
+ * File:        logger_i2c_eeprom.h
+ * Project:     RocketMotorPIDGimbal V1.3
+ * Author:      Boris du Reau
+ * Description: Flight logger stored in the external I2C EEPROM.
+ *
+ * Memory map:  0 .. 199    flight list (25 x start/stop addresses)
+ *              200 .. end  flight records (FlightDataStruct), one spare
+ *                          byte between two consecutive records.
+ *
+ * Warning:     FlightDataStruct and FlightConfigStruct are stored in the
+ *              EEPROM. Changing them makes the flights already recorded
+ *              unreadable.
+ */
 #ifndef _LOGGER_I2C_EEPROM_H
 #define _LOGGER_I2C_EEPROM_H
 

@@ -1,3 +1,19 @@
+/*
+ * File:        Bear_BMP085.cpp
+ * Project:     RocketMotorPIDGimbal V1.3
+ * Author:      Adafruit Industries (original library), adapted by
+ *              Boris du Reau
+ * Description: Driver for the Bosch BMP085 / BMP180 barometric pressure
+ *              and temperature sensor.
+ *
+ * Changes:     - The floating point pow() calls used inside the integer
+ *                compensation formulas have been replaced by integer
+ *                divisions by constant powers of two. The results are
+ *                identical (same truncation toward zero) but much faster
+ *                on a microcontroller without FPU (STM32F103).
+ *
+ * Original license notice:
+ */
 /*************************************************** 
   This is a library for the BMP085 Barometric Pressure & Temp Sensor
 
@@ -136,8 +152,9 @@ int32_t BMP085::readPressure(void) {
 #endif
 
   // do temperature calculations
-  X1=(UT-(int32_t)(ac6))*((int32_t)(ac5))/pow(2,15);
-  X2=((int32_t)mc*pow(2,11))/(X1+(int32_t)md);
+  // integer math only: "/ 32768" is 2^15 and "* 2048" is 2^11
+  X1 = (UT - (int32_t)(ac6)) * ((int32_t)(ac5)) / 32768;
+  X2 = ((int32_t)mc * 2048) / (X1 + (int32_t)md);
   B5=X1 + X2;
 
 #if BMP085_DEBUG == 1
@@ -212,10 +229,11 @@ float BMP085::readTemperature(void) {
 #endif
 
   // step 1
-  X1 = (UT - (int32_t)ac6) * ((int32_t)ac5) / pow(2,15);
-  X2 = ((int32_t)mc * pow(2,11)) / (X1+(int32_t)md);
+  // integer math only: "/ 32768" is 2^15 and "* 2048" is 2^11
+  X1 = (UT - (int32_t)ac6) * ((int32_t)ac5) / 32768;
+  X2 = ((int32_t)mc * 2048) / (X1 + (int32_t)md);
   B5 = X1 + X2;
-  temp = (B5+8)/pow(2,4);
+  temp = (B5 + 8) / 16.0f;   // 2^4
   temp /= 10;
   
   return temp;

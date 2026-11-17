@@ -1,3 +1,14 @@
+/*
+ * File:        IC2extEEPROM.cpp
+ * Project:     RocketMotorPIDGimbal V1.3
+ * Author:      Jack Christensen (original extEEPROM library)
+ * Description: Driver for the external I2C EEPROM (24LC512, 64 KB) that
+ *              stores the flight list and the flight data.
+ *
+ * Changes:     - Removed a stray quote in the #include directive.
+ *
+ * Original license notice:
+ */
 /*-----------------------------------------------------------------------------*
  * extEEPROM.cpp - Arduino library to support external I2C EEPROMs.            *
  *                                                                             *
@@ -52,7 +63,7 @@
  * http://creativecommons.org/licenses/by-sa/4.0/                              *
  *-----------------------------------------------------------------------------*/
 
-#include "IC2extEEPROM.h""
+#include "IC2extEEPROM.h"
 #include <Wire.h>
 
 // Constructor.

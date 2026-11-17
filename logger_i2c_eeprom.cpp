@@ -1,3 +1,11 @@
+/*
+ * File:        logger_i2c_eeprom.cpp
+ * Project:     RocketMotorPIDGimbal V1.3
+ * Author:      Boris du Reau
+ * Description: Flight logger stored in the external I2C EEPROM: flight
+ *              list management, flight record write/read and flight data
+ *              dump to the Android application.
+ */
 #include "logger_i2c_eeprom.h"
 #include "IC2extEEPROM.h"
 extEEPROM eep(kbits_512, 1, 64);
@@ -48,6 +56,11 @@ long logger_I2C_eeprom::writeFastFlight(long eeaddress) {
   return eeaddress + sizeof(_FlightData);
 }
 
+/*
+   getLastFlightNbr()
+   Parse the flight index and check if the flight_start address is > 0
+   Return -1 if no flight has been recorded, else the last flight number
+*/
 int logger_I2C_eeprom::getLastFlightNbr()
 {
   int i;
@@ -264,6 +277,11 @@ long logger_I2C_eeprom::getFlightAltitudeData()
     }
   }
   }*/
+/*
+   printFlightData()
+   Send all the records of one flight to the Android application.
+   One "$data,...;" message per record.
+*/
 void logger_I2C_eeprom::printFlightData(int flightNbr)
 {
   int startaddress;
@@ -342,6 +360,11 @@ long logger_I2C_eeprom::getSizeOfFlightData()
 {
   return sizeof(_FlightData);
 }
+/*
+   CanRecord()
+   Return true if there is room for one more flight
+   (less than 25 flights and memory not full)
+*/
 boolean logger_I2C_eeprom::CanRecord()
 {
   long lastFlight;
@@ -389,9 +412,8 @@ bool logger_I2C_eeprom::eraseLastFlight() {
 
 /*
 
-   getLastFlightNbr()
-   Parse the flight index end check if the flight_start address is > 0
-   return -1 if no flight have been recorded else return the flight number
+   getLastFlightEndAddress()
+   Return the end address of the last recorded flight
 
 */
 long logger_I2C_eeprom::getLastFlightEndAddress()

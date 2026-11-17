@@ -1,8 +1,19 @@
+/*
+ * File:        global.h
+ * Project:     RocketMotorPIDGimbal V1.3
+ * Author:      Boris du Reau
+ * Description: Global objects and variables: pressure sensor selection,
+ *              servos, MPU6050 / DMP state, PID controllers and IMU
+ *              calibration settings.
+ *
+ * Note:        This header defines variables, so it must only be included
+ *              by the main sketch (.ino).
+ */
 #ifndef _GLOBAL_H
 #define _GLOBAL_H
 #define INTERRUPT_PIN PB12
-#define LED_PIN PC13 //pin 13 for the arduino Uno and PC13 for the stm32 
-//used for writing in the microcontroler internal eeprom
+#define LED_PIN PC13 //pin 13 for the Arduino Uno and PC13 for the stm32
+//used for writing in the microcontroller internal eeprom
 #include <EEPROM.h>
 #include <Servo.h> //servo library
 //#include <PWMServo.h>
@@ -11,15 +22,15 @@
 #include <PID_v1.h> // Arduino PID library
 #include <Wire.h>
 
-#include "Bear_BMP085.h"
+//#include "Bear_BMP085.h"
 
 // choose the pressure sensor that you are using
-// for most board the pressure sensor is either BMP085 or BMP180 
+// for most boards the pressure sensor is either BMP085 or BMP180 
 // note that BMP085 and 180 are compatible no need to use the new BMP180 library
-//#define BMP085_180
+#define BMP085_180
 
 // if you have a custom board using a BMP280 pressure sensor 
-#define BMP280
+//#define BMP280
 
 #ifdef BMP085_180
 #include "Bear_BMP085.h"
@@ -77,7 +88,7 @@ double SetpointX, InputX, OutputX;
 double SetpointY, InputY, OutputY;
 
 // Those initial tuning parameters need to be tuned
-// this is a bit like when you tune your copter appart from the fact that the rocket motor last only few seconds
+// this is a bit like when you tune your copter apart from the fact that the rocket motor last only few seconds
 // please help !!!!!!!
 //double KpX = 2, KiX = 5, KdX = 1;
 double KpX = 3.55, KiX = 0.005, KdX = 2.05;
@@ -91,12 +102,14 @@ PID myPIDY(&InputY, &OutputY, &SetpointY, KpY, KiY, KdY, DIRECT);
 //calibration stuff
 //Change those 3 variables if you want to fine tune the skecth to your needs.
 int buffersize = 200;   //Amount of readings used to average, make it higher to get more precision but sketch will be slower  (default:1000)
-int acel_deadzone = 8;   //Acelerometer error allowed, make it lower to get more precision, but sketch may not converge  (default:8)
-int giro_deadzone = 1;   //Giro error allowed, make it lower to get more precision, but sketch may not converge  (default:1)
+int acel_deadzone = 8;   //Accelerometer error allowed, make it lower to get more precision, but sketch may not converge  (default:8)
+int giro_deadzone = 1;   //Gyro error allowed, make it lower to get more precision, but sketch may not converge  (default:1)
 
+// raw accelerometer and gyroscope readings
 int16_t ax, ay, az, gx, gy, gz;
 
 int mean_ax, mean_ay, mean_az, mean_gx, mean_gy, mean_gz, state = 0;
 int ax_offset, ay_offset, az_offset, gx_offset, gy_offset, gz_offset;
+// time of the last telemetry message (ms)
 long last_telem_time=0;
 #endif

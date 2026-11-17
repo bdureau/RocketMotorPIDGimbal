@@ -1,9 +1,27 @@
+/*
+ * File:        config.cpp
+ * Project:     RocketMotorPIDGimbal V1.3
+ * Author:      Boris du Reau
+ * Description: Default configuration, read/write of the configuration in
+ *              the microcontroller (emulated) EEPROM, configuration update
+ *              received from the Android application, message checksum and
+ *              buzzer helpers.
+ *
+ * Changes:     - writeConfigStruc() now uses the buffered EEPROM API of the
+ *                STM32 core: the flash page is erased and programmed once
+ *                instead of once per byte (faster and much less flash wear).
+ */
 #include "config.h"
 ConfigStruct config;
 const int pinSpeaker = PA0;
 //================================================================
-// read and write in the microcontroler eeprom
+// Read and write the configuration in the microcontroller EEPROM
 //================================================================
+
+/*
+   defaultConfig()
+   Load the factory default values in the configuration structure.
+*/
 void defaultConfig()
 {
   config.ax_offset = 0;
@@ -39,6 +57,12 @@ void defaultConfig()
 
 
 
+/*
+   readAltiConfig()
+   Read the configuration from the EEPROM.
+   Return false if the checksum is invalid (configuration never written
+   or corrupted).
+*/
 boolean readAltiConfig() {
   //set the config to default values so that if any have not been configured we can use the default ones
   defaultConfig();
@@ -57,8 +81,8 @@ boolean readAltiConfig() {
 }
 
 /*
-  write the config received by the console
-
+  Former version of the configuration writer (whole configuration in one
+  message). Kept for reference only, replaced by writeAltiConfigV2().
 */
 /*bool  writeAltiConfig( char *p ) {
   //Serial1.println(p);
@@ -202,6 +226,13 @@ boolean readAltiConfig() {
   return true;
 }*/
 
+/*
+   writeAltiConfigV2()
+   Update one configuration parameter received from the Android application.
+   Message format: p,<parameter number>,<value>,<checksum>
+   The configuration is only updated in RAM, the 'q' command saves it.
+   Return false if the message is incomplete or the checksum is invalid.
+*/
 bool writeAltiConfigV2( char *p ) {
 
   char *str;
@@ -228,10 +259,10 @@ bool writeAltiConfigV2( char *p ) {
     i++;
 
   }
-    //we have a partial config
+  //we have a partial config
   if (i < 4)
     return false;
-  //checksum is ivalid ? 
+  //is the checksum invalid?
   if (msgChk(msg, sizeof(msg)) != strChk)
     return false;  
     
@@ -328,6 +359,11 @@ bool writeAltiConfigV2( char *p ) {
 
   return true;
 }
+/*
+   msgChk()
+   Checksum of a message: sum of all the bytes modulo 256.
+   Trailing null bytes do not change the result.
+*/
 unsigned int msgChk( char * buffer, long length ) {
 
   long index;
@@ -338,6 +374,10 @@ unsigned int msgChk( char * buffer, long length ) {
 
 }
 
+/*
+   CheckSumConf()
+   Checksum of the configuration structure (all the fields except cksum).
+*/
 unsigned int CheckSumConf( ConfigStruct cnf)
 {
   int i;
@@ -349,13 +389,35 @@ unsigned int CheckSumConf( ConfigStruct cnf)
   return chk;
 }
 
+/*
+   writeConfigStruc()
+   Save the configuration structure in the microcontroller EEPROM.
+
+   On STM32 the EEPROM is emulated in flash and every EEPROM.write() call
+   erases and re-programs the whole flash page. The buffered API is used
+   instead: the page is copied to RAM, modified, then flashed only once.
+*/
 void writeConfigStruc()
 {
-  int i;
+  unsigned int i;
+#if defined(ARDUINO_ARCH_STM32)
+  // load the current flash page content so that the other bytes are kept
+  eeprom_buffer_fill();
+  for ( i = 0; i < sizeof(config); i++ ) {
+    eeprom_buffered_write_byte(CONFIG_START + i, *((uint8_t*)&config + i));
+  }
+  // single erase + program of the flash page
+  eeprom_buffer_flush();
+#else
+  // other cores: fall back to the byte by byte write
   for ( i = 0; i < sizeof(config); i++ ) {
     EEPROM.write(CONFIG_START + i, *((char*)&config + i));
   }
+#endif
 }
+/*
+   Buzzer helpers
+*/
 void longBeep()
 {
   //if (NoBeep == false)
@@ -374,6 +436,11 @@ void shortBeep()
   noTone(pinSpeaker);
   //}
 }
+/*
+   beepAltiVersion()
+   Beep the firmware version: one long beep per major number then one
+   short beep per minor number.
+*/
 void beepAltiVersion (int majorNbr, int minorNbr)
 {
   int i;

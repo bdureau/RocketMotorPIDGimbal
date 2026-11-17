@@ -1,42 +1,61 @@
 /*
-
-   Description: Model Rocket motor gimbal using 2 servo. This is yet again another attempt to fly a model rocket without fins using long burn motors.
-                It is using the Arduino PID controler to move a rocket motor.
-                Angle changes can be monitored using a USB cable or a bluetooth interface
-                Inspired by various camera gimbal projects
-   Author: Boris du Reau
-   Date: June 2018-2023
-   Sensor used is an MPU6050 board
-
-   You can use an Arduino Uno/Nano or stm32F103C board
-
-   Servo Connection
-   BROWN - gnd
-   red - 5v
-   yellow - d10 (pwm for Sero X) or PA1 for stm32
-          - d11 (servo Y) or PA2 for stm32
-
-   MPU board Connection
-   VCC - 5v
-   GND - GND
-   SCL - A5  or pin SCL on the stm32
-   SDA - A4  or pin SDA on the stm32
-   INT - D2 (not used)
-
-  This can be configured using the Gimbale Android application
-  which is also hosted on Github
-  Version 1.0:
-  Can log the data from all sensors on the eeprom and comunicate with an Android device
-  via the serial port or a bluetooth module.
-  Version 1.1
-  Configure the accelero and gyro range
-  Fixes, added checksum
-  Version 1.2
-  Fixes
-  Version 1.3
-  Fixes adding additionnal param for the telemetry module
-   Adding the BMP280 sensor
-*/
+ * File:        RocketMotorPIDGimbalV1.3.ino
+ * Project:     RocketMotorPIDGimbal V1.3
+ * Author:      Boris du Reau
+ * Date:        June 2018 - 2026
+ * Description: Model rocket motor gimbal using 2 servos. This is yet
+ *              another attempt to fly a model rocket without fins using
+ *              long burn motors. The motor is moved according to the
+ *              attitude computed by the MPU6050 DMP. The flight data is
+ *              logged in an external I2C EEPROM and the gimbal can be
+ *              configured and monitored with the Gimbal Android
+ *              application (USB cable or bluetooth module), which is also
+ *              hosted on Github. Inspired by various camera gimbal projects.
+ *
+ * Target:      STM32F103C board (Arduino Uno/Nano pin names in brackets)
+ *
+ * Wiring:
+ *   Servos          BROWN  - GND
+ *                   RED    - 5V
+ *                   YELLOW - PA1 servo X (D10), PA2 servo Y (D11)
+ *   MPU6050         VCC - 5V, GND - GND
+ *                   SCL - SCL (A5), SDA - SDA (A4)
+ *                   INT - PB12 (D2), required by the DMP
+ *   Battery         PB1 through a voltage divider (see config.h)
+ *   Buzzer          PA0
+ *
+ * Serial protocol: Serial1, 38400 bauds. Commands end with ';'. The
+ *              message formats are shared with the Android application
+ *              and must not be changed.
+ *
+ * History:
+ *   Version 1.0 Logs the data from all sensors in the EEPROM and
+ *               communicates with an Android device via the serial port
+ *               or a bluetooth module.
+ *   Version 1.1 Configurable accelerometer and gyroscope ranges.
+ *               Fixes, added checksum.
+ *   Version 1.2 Fixes.
+ *   Version 1.3 Additional parameter for the telemetry module.
+ *               Added the BMP280 sensor.
+ *               Fixes and optimizations:
+ *               - BMP085 compensation without floating point pow().
+ *               - Telemetry no longer re-reads the altitude: the Kalman
+ *                 filter is advanced only once per loop.
+ *               - Bounded serial command buffer (no stack overflow).
+ *               - The IMU calibration is no longer lost after a reboot
+ *                 (configuration checksum fixed).
+ *               - Accelerometer liftoff: the flight is no longer ended
+ *                 immediately while the rocket is still on the pad.
+ *               - A serial command received during a flight no longer
+ *                 resets the flight in progress.
+ *               - Apogee detection state is reset for every flight.
+ *               - The configured accelerometer range is applied after
+ *                 the DMP initialization, and the liftoff threshold
+ *                 follows the range.
+ *               - Configuration saved with a single flash erase.
+ *               - The IMU calibration can no longer loop forever.
+ *               - Correct battery voltage divider ratio.
+ */
 
 
 #include "config.h"
@@ -45,22 +64,30 @@
 #include "kalman.h"
 #include "logger_i2c_eeprom.h"
 logger_I2C_eeprom logger(0x50) ;
+// size of the external EEPROM in bytes
 long endAddress = 65536;
 // current file number that you are recording
 int currentFileNbr = 0;
 
-// EEPROM start adress for the flights. Anything before that is the flight index
+// EEPROM start address for the flights. Anything before that is the flight index
 long currentMemaddress = 200;
 boolean liftOff = false;
-//boolean landed = true;
 boolean rocketLanded = false;
 boolean rocketApogee = false;
+// true once the rocket has climbed above liftoffAltitude during the
+// current flight. The landing detection is only armed after that, so that
+// a flight started on the pad (accelerometer liftoff or manual recording)
+// is not ended immediately.
+boolean landingArmed = false;
 //ground level altitude
 long initialAltitude;
+// altitude above which the barometric liftoff is detected (m)
 long liftoffAltitude = 20;
+// altitude below which the rocket is considered landed (m)
+#define LANDING_ALTITUDE 10
 long lastAltitude;
 long apogeeAltitude;
-//current altitude
+//current altitude (above ground level, filtered)
 long currAltitude;
 bool canRecord;
 bool recording = false;
@@ -70,53 +97,39 @@ unsigned long prevTime = 0;
 unsigned long diffTime;
 unsigned long currentTime = 0;
 //nbr of measures to do so that we are sure that apogee has been reached
-unsigned long measures = 5;
+#define APOGEE_MEASURES 5
+unsigned long measures = APOGEE_MEASURES;
 long recordingTimeOut = 20000;
 long lastBattWarning = 0;
-
-/*
-   ReadAltitude()
-   Read altitude and filter any nose with a Kalman filter
-*/
-/*double ReadAltitude()
-{
-  return KalmanCalc(bmp.readAltitude());
-}*/
+// accelerometer liftoff threshold in raw counts, computed from
+// LIFTOFF_ACCEL_THRESHOLD_G and the accelerometer range in initialize()
+int32_t liftoffAccelThreshold = 30000;
 
 #ifdef BMP085_180
 /*
    ReadAltitude()
-   Read Altitude function for a BMP85 or 180 Bosch sensor
-
+   Read the altitude from a BMP085 or BMP180 Bosch sensor and filter the
+   noise with the Kalman filter.
+   Warning: every call advances the Kalman filter, so call it only once
+   per loop.
 */
 double ReadAltitude()
 {
   return KalmanCalc(bmp.readAltitude());
-  //return bmp.readAltitude();
 }
 #endif
 
 #ifdef BMP280
 /*
-
-   Read Altitude function for a BMP280 Bosch sensor
-
-
+   ReadAltitude()
+   Read the altitude from a BMP280 Bosch sensor and filter the noise with
+   the Kalman filter.
+   Warning: every call advances the Kalman filter, so call it only once
+   per loop.
 */
 double ReadAltitude()
 {
-  /*double T, P, A;
-  char result = bmp.startMeasurment();
-  if (result != 0) {
-    delay(result);
-    result = bmp.getTemperatureAndPressure(T, P);
-    A = KalmanCalc(bmp.altitude(P, P0));
-  }
-  return A;*/
   return KalmanCalc(bmp.readAltitude(1013.25));
-  
-  
-  
 }
 #endif
 
@@ -130,10 +143,11 @@ void dmpDataReady() {
 }
 
 /*
-   Initial setup
-    do the board calibration
-    if you use the calibration function do not move the board until the calibration is complete
-
+   setup()
+   Initial setup: buzzer, servos, configuration, pressure sensor, Kalman
+   filter, ground altitude, MPU6050 and flight list.
+   The hard coded offsets below are only used when no valid configuration
+   is found in the EEPROM.
 */
 void setup()
 {
@@ -149,7 +163,7 @@ void setup()
   ServoX.attach(PA1);  // attaches the X servo on PA1 for stm32 or D10 for the Arduino Uno
   ServoY.attach(PA2);  // attaches the Y servo on PA2 for stm32 or D11 for the Arduino Uno
 
-  // set both servo's to 90 degree
+  // set both servos to 90 degrees
   ServoX.write(90);
   ServoY.write(90);
   delay(500);
@@ -188,12 +202,24 @@ void setup()
   Serial1.begin(38400);
   while (!Serial1);      // wait for Leonardo enumeration, others continue immediately
 
-  bmp.begin( config.altimeterResolution);
+  analogReadResolution(12); // 12 bit ADC, used by the battery voltage reading
+  //bmp.begin( config.altimeterResolution);
+  if (!bmp.begin( config.altimeterResolution)) {
+    Serial.println("Could not find a valid BMP085 sensor, check wiring!");
+    while (1) {
+      shortBeep();
+      delay(500);
+      shortBeep();
+      delay(500);
+      longBeep();
+      delay(500);
+      }
+  }
 
   // init Kalman filter
   KalmanInit();
-  // let's do some dummy altitude reading
-  // to initialise the Kalman filter
+  // let's do some dummy altitude readings
+  // to initialize the Kalman filter
   for (int i = 0; i < 50; i++) {
     ReadAltitude();
   }
@@ -211,9 +237,8 @@ void setup()
 
 
 
-  // INPUT CALIBRATED OFFSETS HERE; SPECIFIC FOR EACH UNIT AND EACH MOUNTING CONFIGURATION!!!!
-  // use the calibrate function for yours
-  // you can also write down your offset and use them so that you do not have to re-run the calibration
+  // Offsets are specific to each unit and each mounting configuration.
+  // They come from the configuration saved by the calibration ('c' command).
   ax_offset = config.ax_offset;
   ay_offset = config.ay_offset;
   az_offset = config.az_offset;
@@ -248,9 +273,46 @@ void setup()
 }
 
 /*
+   accelRangeToLsbPerG()
+   Return the MPU6050 accelerometer sensitivity (raw counts per g) for a
+   range code: 0 = +/-2g, 1 = +/-4g, 2 = +/-8g, 3 = +/-16g.
+*/
+int32_t accelRangeToLsbPerG(int range) {
+  if (range < 0 || range > 3)
+    range = 0;
+  return 16384L >> range;
+}
 
-   Initialize the MUP6050 sensor
+/*
+   applyAccelRange()
+   Apply the configured accelerometer range and compute the matching
+   accelerometer liftoff threshold in raw counts.
+*/
+void applyAccelRange() {
+  int range = config.acceleroRange;
+  if (range < 0 || range > 3)
+    range = MPU6050_ACCEL_FS_2;
+  mpu.setFullScaleAccelRange(range);
+  liftoffAccelThreshold = (int32_t)(LIFTOFF_ACCEL_THRESHOLD_G * accelRangeToLsbPerG(range));
+}
 
+/*
+   initialize()
+   Initialize the MPU6050 sensor, its DMP and the PID controllers.
+
+   Accelerometer range values (config.acceleroRange):
+     MPU6050_ACCEL_FS_2, MPU6050_ACCEL_FS_4, MPU6050_ACCEL_FS_8,
+     MPU6050_ACCEL_FS_16
+   Gyroscope range values (config.gyroRange):
+     MPU6050_GYRO_FS_250, MPU6050_GYRO_FS_500, MPU6050_GYRO_FS_1000,
+     MPU6050_GYRO_FS_2000
+
+   Note: mpu.initialize() and mpu.dmpInitialize() both reset the ranges,
+   so the configured accelerometer range must be applied after them.
+   The gyroscope range is NOT applied: the MotionApps 2.0 DMP firmware
+   requires +/-2000 deg/s (set by dmpInitialize()) and its quaternion is
+   wrong with any other range. config.gyroRange is kept in the
+   configuration for the Android application only.
 */
 void initialize() {
   // verify connection
@@ -258,35 +320,22 @@ void initialize() {
   Serial1.println(F("Testing device connections..."));
   Serial1.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
 #endif
-  // initialize device
-  // do not use the constructor so that we can change the gyro and ACCEL RANGE
-  // values accelerometer are:
-  // MPU6050_ACCEL_FS_2
-  // MPU6050_ACCEL_FS_4
-  // MPU6050_ACCEL_FS_8
-  // MPU6050_ACCEL_FS_16
-  // Values for the Gyro are:
-  // MPU6050_GYRO_FS_250
-  // MPU6050_GYRO_FS_500
-  // MPU6050_GYRO_FS_1000
-  // MPU6050_GYRO_FS_2000
 
 #ifdef SERIAL_DEBUG
   Serial1.println(F("Initializing MPU 6050 device..."));
 #endif
   mpu.setClockSource(MPU6050_CLOCK_PLL_XGYRO);
-  //mpu.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
-  // mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
-  mpu.setFullScaleGyroRange(config.gyroRange);
-  mpu.setFullScaleAccelRange(config.acceleroRange);
   mpu.setSleepEnabled(false); // thanks to Jack Elston for pointing this one out!
 
   // load and configure the DMP
 #ifdef SERIAL_DEBUG
   Serial1.println(F("Initializing DMP"));
 #endif
-  mpu.initialize(); //added
+  mpu.initialize();
   devStatus = mpu.dmpInitialize();
+  // apply the configured accelerometer range now that the DMP
+  // initialization has reset it (gyro stays at +/-2000 deg/s, see above)
+  applyAccelRange();
   mpu.setXAccelOffset(ax_offset);
   mpu.setYAccelOffset(ay_offset);
   mpu.setZAccelOffset(az_offset);
@@ -294,7 +343,7 @@ void initialize() {
   mpu.setYGyroOffset(gy_offset);
   mpu.setZGyroOffset(gz_offset);
   //turn the PID on
-  //servo's can go from 60 degree's to 120 degree so set the angle correction to + - 30 degrees max
+  //limit the PID correction to +/- 5 degrees
   myPIDX.SetOutputLimits(-5, 5);
   myPIDY.SetOutputLimits(-5, 5);
   myPIDX.SetMode(AUTOMATIC);
@@ -338,31 +387,36 @@ void loop(void)
   MainMenu();
 }
 
+/*
+   Mainloop()
+   One iteration of the flight computer: altitude, liftoff, data logging,
+   apogee and landing detection, attitude from the DMP, servo command,
+   telemetry and battery check.
+*/
 void Mainloop(void)
 {
-  long startTime = millis();
-
-  //read current altitude
+  //read current altitude (the only Kalman filter update of the loop)
   currAltitude = (ReadAltitude() - initialAltitude);
   bool lift = false;
   if (config.liftOffDetect == 0) { //use baro detection
     if ( currAltitude > liftoffAltitude)
       lift = true;
   }
-  else { // use accelero
-    if (mpu.getAccelerationY() > 30000)
+  else { // use accelerometer, threshold depends on the accelerometer range
+    if (mpu.getAccelerationY() > liftoffAccelThreshold)
       lift = true;
   }
 
   if ((lift && !liftOff) || (recording && !liftOff))
   {
-
-    //#ifdef SERIAL_DEBUG
-    //Serial1.println(F("start recording"));
-//#endif
+    // start of a new flight
     liftOff = true;
     rocketLanded = false;
     rocketApogee = false;
+    landingArmed = false;
+    // reset the apogee detection
+    lastAltitude = 0;
+    measures = APOGEE_MEASURES;
     if (recording)
       rec = true;
     // save the time
@@ -379,22 +433,20 @@ void Mainloop(void)
       }
       else
       {
-        //#ifdef SERIAL_DEBUG
-   // Serial1.println(F("currentMemaddress"));
-//#endif
         currentMemaddress = logger.getFlightStop(lastFlightNbr) + 1;
         currentFileNbr = lastFlightNbr + 1;
       }
       //Save start address
       logger.setFlightStartAddress (currentFileNbr, currentMemaddress);
     }
-    //Serial1.println("We have a liftoff");
   }
+
+  // arm the landing detection once the rocket has really climbed
+  if (liftOff && !landingArmed && currAltitude > liftoffAltitude)
+    landingArmed = true;
+
   if (canRecord && liftOff)
   {
-    //#ifdef SERIAL_DEBUG
-    //Serial1.println(F("canRecord && liftOff"));
-//#endif
     currentTime = millis() - initialTime;
     diffTime = currentTime - prevTime;
     prevTime = currentTime;
@@ -403,12 +455,8 @@ void Mainloop(void)
     logger.setFlightTemperatureData((long) bmp.readTemperature());
     logger.setFlightPressureData((long) bmp.readPressure());
 
-    float w = q.w;
-    float x = q.x;
-    float y = q.y;
-    float z = q.z;
-
-    logger.setFlightRocketPos((long) (w * 1000), (long) (q.x * 1000), (long) (q.y * 1000), (long) (q.z * 1000));
+    // quaternion stored as integers (x 1000)
+    logger.setFlightRocketPos((long) (q.w * 1000), (long) (q.x * 1000), (long) (q.y * 1000), (long) (q.z * 1000));
     logger.setFlightCorrection( (long) OutputX, (long)OutputY);
     logger.setAcceleration(mpu.getAccelerationX(), mpu.getAccelerationY(), mpu.getAccelerationZ());
     if ( (currentMemaddress + logger.getSizeOfFlightData())  > endAddress) {
@@ -417,24 +465,20 @@ void Mainloop(void)
       logger.setFlightEndAddress (currentFileNbr, currentMemaddress - 1);
       canRecord = false;
     } else {
-       //#ifdef SERIAL_DEBUG
-    //Serial1.println(F("writting"));
-    delay(10);
-    //Serial1.println(currentMemaddress);
-//#endif
+      delay(10);
       currentMemaddress = logger.writeFastFlight(currentMemaddress);
+      // one spare byte between two records (EEPROM format, do not change)
       currentMemaddress++;
     }
   }
 
-  //detect apogee
-  if (liftOff) {
+  //detect apogee: altitude decreasing for APOGEE_MEASURES consecutive loops
+  if (liftOff && !rocketApogee) {
     if (currAltitude < lastAltitude  )
     {
       measures = measures - 1;
       if (measures == 0)
       {
-        //apogeeAltitude = currAltitude;
         apogeeAltitude = lastAltitude;
         rocketApogee = true;
       }
@@ -443,12 +487,16 @@ void Mainloop(void)
     {
       lastAltitude = currAltitude;
       //number of measures to do to detect Apogee
-      measures = 5; //= config.nbrOfMeasuresForApogee;
+      measures = APOGEE_MEASURES;
     }
   }
 
-  // if (((canRecord && currAltitude < 10) && liftOff && !recording && !rec) || (!recording && rec))
-  if (((canRecord && currAltitude < 10) && liftOff && !recording && !rec) || (!recording && rec) || (canRecord && liftOff && !recording && !rec && (millis() - initialTime) > recordingTimeOut))
+  // end of the flight recording when:
+  // - the rocket is back below LANDING_ALTITUDE after having climbed
+  //   above liftoffAltitude (automatic flight), or
+  // - the manual recording has been stopped, or
+  // - the recording timeout is reached
+  if (((canRecord && currAltitude < LANDING_ALTITUDE) && liftOff && landingArmed && !recording && !rec) || (!recording && rec) || (canRecord && liftOff && !recording && !rec && (millis() - initialTime) > recordingTimeOut))
   {
     #ifdef SERIAL_DEBUG
     Serial1.println(F("finishing"));
@@ -456,7 +504,7 @@ void Mainloop(void)
     #endif
     liftOff = false;
     rec = false;
-    //end loging
+    //end logging
     //store start and end address
     logger.setFlightEndAddress (currentFileNbr, currentMemaddress - 1);
     logger.writeFlightList();
@@ -464,10 +512,9 @@ void Mainloop(void)
       canRecord = false;
   }
 
-  if ((currAltitude < 10) && rocketApogee && !recording && !rec) {
+  if ((currAltitude < LANDING_ALTITUDE) && rocketApogee && !recording && !rec) {
     //landed
     rocketLanded = true;
-    //SendTelemetry(q1, 200);
   }
 
   /////////
@@ -507,7 +554,7 @@ void Mainloop(void)
     // (this lets us immediately read more without waiting for an interrupt)
     fifoCount -= packetSize;
 
-    // display Euler angles in degrees
+    // compute the Euler angles in degrees
     mpu.dmpGetQuaternion(&q, fifoBuffer);
     //mpu.dmpGetAccel(&aa, fifoBuffer);
     mpu.dmpGetGravity(&gravity, &q);
@@ -581,15 +628,16 @@ void Mainloop(void)
 
 
 //================================================================
-// Main menu to interpret all the commands sent by the altimeter console
+// Main menu: run the main loop while reading the commands sent by the
+// Android application, then interpret the command once ';' is received
 //================================================================
 void MainMenu()
 {
+  // static buffer: not allocated on the stack at every call. It is kept
+  // fully cleared between two commands (see the end of this function).
+  static char commandbuffer[COMMAND_BUFFER_SIZE];
   char readVal = ' ';
   int i = 0;
-
-  char commandbuffer[1000] = "";
-
 
   while ( readVal != ';') {
     if (mainLoopEnable)
@@ -599,42 +647,53 @@ void MainMenu()
       readVal = Serial1.read();
       if (readVal != ';' )
       {
-        if (readVal != '\n')
+        // ignore new lines, and drop the characters that do not fit in
+        // the buffer instead of overflowing it
+        if (readVal != '\n' && i < (COMMAND_BUFFER_SIZE - 1))
           commandbuffer[i++] = readVal;
       }
       else
       {
-        commandbuffer[i++] = '\0';
-        resetFlight();
+        commandbuffer[i] = '\0';
+        // do not reset the flight state while a flight is in progress,
+        // otherwise the flight being recorded is lost
+        if (!liftOff)
+          resetFlight();
         break;
       }
     }
   }
 
   interpretCommandBuffer(commandbuffer);
-  for (int i = 0; i < sizeof(commandbuffer); i++)
-    commandbuffer[i] = '\0';
+  // clear only the part of the buffer that has been used by this command
+  // (characters + terminator) so that the buffer is all zeros again
+  memset(commandbuffer, 0, i + 1);
 }
 /*
+   interpretCommandBuffer()
+   Interpret the menu commands. They can be typed in a serial terminal or
+   sent by the Android application. Every command ends with ';'.
 
-   This interprets menu commands. This can be used in the commend line or
-   this is used by the Android console
-
-   Commands are as folow:
+   Commands are as follows:
+   a  get all flight data
+   b  get the gimbal configuration
+   c  calibrate the IMU (different from the other altimeters) and save
+      the offsets
+   d  reset the configuration to the default values
    e  erase all saved flights
+   h  hello. Does not do much
+   l  list all flights
+   m  followed by 1 or 0: main loop on/off
+   n  return the number of recorded flights in the EEPROM
+   o  send a test message
+   p  write one configuration parameter (in RAM)
+   q  save the configuration in the EEPROM
    r  followed by a number which is the flight number.
       This will retrieve all data for the specified flight
-   w  Start or stop recording
-   n  Return the number of recorded flights in the EEprom
-   l  list all flights
-   c  Different from other altimeters. Here it will calibrate the IMU
-   a  get all flight data
-   b  get altimeter config
-   s  write altimeter config
-   d  reset alti config
-   h  hello. Does not do much
-   y  followed by a number turn telemetry on/off. if number is 1 then
-      telemetry in on else turn it off
+   s  write the whole configuration (obsolete, does nothing)
+   w  followed by 1 or 0: start or stop recording
+   x  delete the last flight
+   y  followed by 1 or 0: telemetry on/off
 */
 void interpretCommandBuffer(char *commandbuffer) {
   //get all flight data
@@ -662,10 +721,17 @@ void interpretCommandBuffer(char *commandbuffer) {
   // calibrate the IMU
   else if (commandbuffer[0] == 'c')
   {
-    //Serial1.println(F("calibration\n"));
-    // Do calibration suff
+    // Do the calibration. It is done with the accelerometer at +/-2 g
+    // because the calibration targets 16384 counts for 1 g.
     state = 0;
-    calibrate();
+    mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
+    if (!calibrate()) {
+      // no convergence: warn with the buzzer, the best offsets found
+      // are still saved
+      longBeep();
+    }
+    // restore the configured accelerometer range
+    applyAccelRange();
     mpu.setXAccelOffset(ax_offset);
     mpu.setYAccelOffset(ay_offset);
     mpu.setZAccelOffset(az_offset);
@@ -678,7 +744,9 @@ void interpretCommandBuffer(char *commandbuffer) {
     config.gx_offset = gx_offset;
     config.gy_offset = gy_offset;
     config.gz_offset = gz_offset;
-    config.cksum = 0;//CheckSumConf(config);
+    // a valid checksum is required, otherwise the configuration (and the
+    // calibration) is rejected at the next power up
+    config.cksum = CheckSumConf(config);
     writeConfigStruc();
     Serial1.print(F("$OK;\n"));
   }
@@ -856,24 +924,23 @@ void interpretCommandBuffer(char *commandbuffer) {
 }
 
 /*
+   SendTelemetry()
+   Send the telemetry message to the Android device every "freq" ms.
+   "arr" is the attitude quaternion (w, x, y, z).
 
-   Send telemetry to the Android device
-
+   The altitude sent is the one already computed by Mainloop() (global
+   currAltitude): calling ReadAltitude() here would advance the Kalman
+   filter a second time in the same loop and cost one more sensor read.
 */
-
-
 void SendTelemetry(float * arr, int freq) {
 
-  float currAltitude;
   float temperature;
   long pressure;
 
   char myTelemetry[220] = "";
 
   if (telemetryEnable && (millis() - last_telem_time) > freq) {
-    //if (telemetryEnable) {
     last_telem_time = millis();
-    currAltitude = ReadAltitude() - initialAltitude;
     pressure = bmp.readPressure();
     temperature = bmp.readTemperature();
 
@@ -943,8 +1010,8 @@ void SendTelemetry(float * arr, int freq) {
     //Batt voltage
     pinMode(PB1, INPUT_ANALOG);
     int batVoltage = analogRead(PB1);
+    // 12 bit ADC, 3.3 V reference
     float bat = VOLT_DIVIDER * ((float)(batVoltage * 3300) / (float)4096000);
-    sprintf(temp, "%f", bat);
     dtostrf(bat, 4, 2, temp);
     strcat( myTelemetry , temp);
     strcat( myTelemetry, ",");
@@ -1026,9 +1093,8 @@ void SendTelemetry(float * arr, int freq) {
 }
 
 /*
-
-   Send the Gimbal configuration to the Android device
-
+   SendAltiConfig()
+   Send the gimbal configuration to the Android device
 */
 
 void SendAltiConfig() {
@@ -1169,14 +1235,15 @@ void SendAltiConfig() {
 }
 
 /*
-
-
-   calibration routines those will be executed each time the board is powered up.
-   we might want to calibrate it for good on a flat table and save it to the microcontroler eeprom
-
-
+   calibrate()
+   IMU calibration routine, started by the 'c' command. The board must lie
+   still with the rocket axis (Y) vertical. The offsets found are saved in
+   the microcontroller EEPROM by the caller.
+   Return false if the calibration did not converge within
+   CALIBRATION_MAX_PASSES passes (the best offsets found are kept).
 */
-void calibrate() {
+bool calibrate() {
+  bool converged = true;
 #ifdef SERIAL_DEBUG
   // start message
   Serial1.println("\nMPU6050 Calibration Sketch");
@@ -1209,7 +1276,7 @@ void calibrate() {
 #ifdef SERIAL_DEBUG
       Serial1.println("\nCalculating offsets...");
 #endif
-      calibration();
+      converged = calibration();
       state++;
       delay(100);
     }
@@ -1245,16 +1312,17 @@ void calibrate() {
       Serial1.println("\nData is printed as: acelX acelY acelZ giroX giroY giroZ");
       Serial1.println("Check that your sensor readings are close to 0 0 16384 0 0 0");
       Serial1.println("If calibration was succesful write down your offsets so you can set them in your projects using something similar to mpu.setXAccelOffset(youroffset)");
-      //while (1);
 #endif
       break;
     }
   }
+  return converged;
 }
 
 /*
-   Used by the calibration fonction
-
+   meansensors()
+   Used by the calibration function: average "buffersize" raw readings of
+   the accelerometer and gyroscope (the first 100 readings are discarded).
 */
 void meansensors() {
   long i = 0, buff_ax = 0, buff_ay = 0, buff_az = 0, buff_gx = 0, buff_gy = 0, buff_gz = 0;
@@ -1284,11 +1352,16 @@ void meansensors() {
   }
 }
 
-void calibration() {
+/*
+   calibration()
+   Used by the calibration function: iteratively adjust the offsets until
+   the averaged readings are within the dead zones. The expected readings
+   are 0 on X and Z and 16384 (1 g at +/-2 g) on Y, the rocket axis.
+   Return false if it did not converge within CALIBRATION_MAX_PASSES.
+*/
+bool calibration() {
   int calibrationPass = 0;
-  /*ax_offset = -mean_ax / 8;
-    ay_offset = -mean_ay / 8;
-    az_offset = (16384 - mean_az) / 8;*/
+  // first guess of the offsets
   ax_offset = -mean_ax / 8;
   ay_offset = (16384 - mean_ay ) / 8;
   az_offset = ( - mean_az) / 8;
@@ -1319,11 +1392,6 @@ void calibration() {
     if (abs(mean_ax) <= acel_deadzone) ready++;
     else ax_offset = ax_offset - mean_ax / acel_deadzone;
 
-    /*if (abs(mean_ay) <= acel_deadzone) ready++;
-      else ay_offset = ay_offset - mean_ay / acel_deadzone;
-
-      if (abs(16384 - mean_az) <= acel_deadzone) ready++;
-      else az_offset = az_offset + (16384 - mean_az) / acel_deadzone;*/
     if (abs(16384 - mean_ay) <= acel_deadzone) ready++;
     else ay_offset = ay_offset + (16384 - mean_ay) / acel_deadzone;
 
@@ -1339,15 +1407,20 @@ void calibration() {
     if (abs(mean_gz) <= giro_deadzone) ready++;
     else gz_offset = gz_offset - mean_gz / (giro_deadzone + 1);
 
-    if (ready == 6) break;
+    if (ready == 6)
+      return true;
+
+    // give up instead of looping forever (sensor moving or faulty)
+    if (calibrationPass >= CALIBRATION_MAX_PASSES)
+      return false;
   }
 }
 
 /*
-
-   Check if the battery voltage is OK.
-   If not warn the user so that the battery does not get
-   damaged by over discharging
+   checkBatVoltage()
+   Check every 10 s if the battery voltage is OK.
+   If not, warn the user so that the battery does not get
+   damaged by over discharging.
 */
 void checkBatVoltage(float minVolt) {
   if ((millis() - lastBattWarning) > 10000) {
@@ -1371,15 +1444,18 @@ void checkBatVoltage(float minVolt) {
 }
 
 /*
-
-   re-nitialise all flight related global variables
-
+   resetFlight()
+   Re-initialize all the flight related global variables
 */
 void resetFlight() {
   liftOff = false;
   apogeeAltitude = 0;
   rocketLanded = false;
   rocketApogee = false;
+  landingArmed = false;
+  // reset the apogee detection
+  lastAltitude = 0;
+  measures = APOGEE_MEASURES;
   logger.readFlightList();
   long lastFlightNbr = logger.getLastFlightNbr();
   if (lastFlightNbr < 0)
@@ -1396,7 +1472,8 @@ void resetFlight() {
 }
 
 /*
-    Test tram
+   sendTestTram()
+   Send a test message to check the link with the Android application
 */
 void sendTestTram() {
 

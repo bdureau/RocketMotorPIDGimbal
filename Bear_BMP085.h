@@ -1,3 +1,15 @@
+/*
+ * File:        Bear_BMP085.h
+ * Project:     RocketMotorPIDGimbal V1.3
+ * Author:      Adafruit Industries (original library), adapted by
+ *              Boris du Reau
+ * Description: Driver for the Bosch BMP085 / BMP180 barometric pressure
+ *              and temperature sensor (BMP180 is register compatible).
+ *
+ * Changes:     - Added an include guard.
+ *
+ * Original license notice:
+ */
 /*************************************************** 
   This is a library for the BMP085 Barometric Pressure & Temp Sensor
 
@@ -13,6 +25,9 @@
   Written by Limor Fried/Ladyada for Adafruit Industries.  
   BSD license, all text above must be included in any redistribution
  ****************************************************/
+
+#ifndef _BEAR_BMP085_H
+#define _BEAR_BMP085_H
 
 #if (ARDUINO >= 100)
  #include "Arduino.h"
@@ -68,3 +83,5 @@ class BMP085 {
   int16_t ac1, ac2, ac3, b1, b2, mb, mc, md;
   uint16_t ac4, ac5, ac6;
 };
+
+#endif
